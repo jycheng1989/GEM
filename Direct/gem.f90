@@ -32,8 +32,8 @@
 	   call poisson(timestep-1,0)
 	   call field(timestep-1,0)
 	   call split_weight(timestep-1,0)
-	   call diagnose(timestep-1)
-           call reporter(timestep-1)
+!	   call diagnose(timestep-1)
+!           call reporter(timestep-1)
 
 	   call push_wrapper(timestep,1)
 
@@ -52,7 +52,7 @@
            end if
 
          end do
-         call ftcamp
+!         call ftcamp
 	 lasttm=MPI_WTIME()
 	 tottm=lasttm-starttm
 !	 write(*,*)'ps time=',pstm,'tot time=',tottm
