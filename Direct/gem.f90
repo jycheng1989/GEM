@@ -1014,7 +1014,7 @@
       nos(1,n)=nostemp/( float(tmm(1)) )
       ke(1,n)=ketemp/( 2.*float(tmm(1))*mims(ns) )
 
-      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+!      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
 
       sbuf(1:nsubd) = myefl_es(1:nsubd)
       call MPI_ALLREDUCE(sbuf,rbuf,10,  &
@@ -1052,7 +1052,7 @@
 !      efl(1,n)=mims(ns)/tets(1)*efltemp/( float(tmm(1)) )
 
       np_old=mm(ns) 
-     call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+!     call MPI_BARRIER(MPI_COMM_WORLD,ierr)
       call init_pmove(z3(ns,:),np_old,lz,ierr)
 !     
       call pmove(x2(ns,:),np_old,np_new,ierr)
@@ -1226,7 +1226,7 @@ if(idg.eq.1)write(*,*)'enter ion grid1',mm(1)
  200     continue
       enddo
 if(idg.eq.1)write(*,*)myid,'pass ion grid1'
-         call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+!         call MPI_BARRIER(MPI_COMM_WORLD,ierr)
 !   enforce periodicity
       call enforce(myden(:,:,:))
       call enforce(myjpar)
@@ -1878,7 +1878,7 @@ END INTERFACE
           rbfr(0,0),(imx+1)*(jmx+1),              &
           MPI_REAL8,rngbr,205,                    &
           TUBE_COMM,stat,ierr)                    
-      call MPI_BARRIER(TUBE_COMM,ierr)             
+!      call MPI_BARRIER(TUBE_COMM,ierr)             
       do i=0,im
          do j=0,jm
             ez(i,j,0)=(weightp(i)*lbfr(i,jpl(i,j)) &
@@ -1906,7 +1906,7 @@ END INTERFACE
           rbfr(0,0),(imx+1)*(jmx+1),   &
           MPI_REAL8,rngbr,207,         &
           TUBE_COMM,stat,ierr)
-      call MPI_BARRIER(TUBE_COMM,ierr)
+!      call MPI_BARRIER(TUBE_COMM,ierr)
       do i=0,im
          do j=0,jm
             dadz(i,j,0)=-(weightp(i)*lbfr(i,jpl(i,j))  &
@@ -2359,11 +2359,11 @@ END INTERFACE
 
       call MPI_BCAST(uz0,(imx+1)*(jmx+1),MPI_REAL8,0, &
           TUBE_COMM,ierr)
-      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+!      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
       
       call MPI_BCAST(uz1,(imx+1)*(jmx+1),MPI_REAL8,GLST, &
           tube_comm,ierr)
-      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+!      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
 
       do i = 0,imx
          do j = 0,jmx
@@ -2395,10 +2395,10 @@ END INTERFACE
       ndum = (imx+1)*(jmx+1)*(NMDZ)
       call MPI_ALLREDUCE(cc0(0,0,0),cc1(0,0,0),ndum,MPI_REAL8, &
           MPI_SUM,tube_comm,ierr)
-      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+!      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
       call MPI_ALLREDUCE(ss0(0,0,0),ss1(0,0,0),ndum,MPI_REAL8, &
           MPI_SUM,tube_comm,ierr)
-      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+!      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
 
       do i = 0,im
          do j = 0,jm
@@ -2824,7 +2824,7 @@ END INTERFACE
           MPI_REAL8, &
           lngbr,101, &
           tube_comm,stat,ierr)	
-      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+!      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
       lbfs=u(:,:,0)
       call MPI_SENDRECV(lbfs(0,0),(imx+1)*(jmx+1), &
           MPI_REAL8, &
@@ -2833,7 +2833,7 @@ END INTERFACE
           MPI_REAL8, &
           rngbr,102, &
           tube_comm,stat,ierr)	
-      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+!      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
       do i=0,im
          do j=0,jm
             u(i,j,0)=u(i,j,0)  &
@@ -3006,7 +3006,7 @@ END INTERFACE
           rbfr(0,0),(imx+1)*(jmx+1), &
           MPI_REAL8,rngbr,205,  &
           tube_comm,stat,ierr)
-      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+!      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
       do i=0,im
          do j=0,jm
             u(i,j,0)=(weightp(i)*lbfr(i,jpl(i,j))  &
@@ -3564,7 +3564,7 @@ END INTERFACE
       ftrap = ttrap/totn
 !      nos(2,n)=nostemp/( float(tmm(2)) )
 
-      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+!      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
 
       sbuf(1:nsubd) = myefl_es(1:nsubd)
       call MPI_ALLREDUCE(sbuf,rbuf,10,  &
@@ -3689,7 +3689,7 @@ END INTERFACE
           rbfr,(imx+1)*(jmx+1),&
           MPI_REAL8,rngbr,405, &
           tube_comm,stat,ierr)
-      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+!      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
 
       do i = 0,im-1
          do j = 0,jm-1
@@ -4576,7 +4576,7 @@ subroutine accumulate(n,ip)
         if(ifluid==1)call setw(ip,n)
 	call grid1(ip,n)
 	if(idg.eq.1)write(*,*)'pass grid1'
-        call MPI_BARRIER(MPI_COMM_WORLD,ierr)        
+!        call MPI_BARRIER(MPI_COMM_WORLD,ierr)        
 end subroutine accumulate
 !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 subroutine poisson(n,ip)
@@ -4673,7 +4673,7 @@ subroutine poisson(n,ip)
         rmsphi(n)=sqrt(rmsphi(n)/(im*jm*km))
 
 	if(idg.eq.1)write(*,*)'pass poisson'
-        call MPI_BARRIER(MPI_COMM_WORLD,ierr)        
+!        call MPI_BARRIER(MPI_COMM_WORLD,ierr)        
 end subroutine poisson
 !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 subroutine ampere(n,ip)
@@ -4772,7 +4772,7 @@ subroutine ampere(n,ip)
         rmsapa(n)=sqrt(rmsapa(n)/(im*jm*km))
 
 	if(idg.eq.1)write(*,*)'pass filter(apar)'
-        call MPI_BARRIER(MPI_COMM_WORLD,ierr)        
+!        call MPI_BARRIER(MPI_COMM_WORLD,ierr)        
 end subroutine ampere
 !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 subroutine split_weight(n,ip)
@@ -4791,7 +4791,7 @@ subroutine split_weight(n,ip)
 	if(idg.eq.1)write(*,*)'pass dpdt'
             end if
 	if(idg.eq.1)write(*,*)'pass split_weight'
-        call MPI_BARRIER(MPI_COMM_WORLD,ierr)        
+!        call MPI_BARRIER(MPI_COMM_WORLD,ierr)        
 end subroutine split_weight
 !ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 subroutine field(n,ip)
@@ -4803,7 +4803,7 @@ subroutine field(n,ip)
 	if(idg.eq.1)write(*,*)'pass grad'
 	call eqmo(ip)
 	if(idg.eq.1)write(*,*)'pass eqmo'
-        call MPI_BARRIER(MPI_COMM_WORLD,ierr)        
+!        call MPI_BARRIER(MPI_COMM_WORLD,ierr)        
 end subroutine field
 !ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 subroutine push_wrapper(n,ip)
@@ -4827,7 +4827,7 @@ subroutine push_wrapper(n,ip)
 !         if(ip.eq.0.and.mod(n+1,10).eq.0)call avgi(1)
          if(eprs>0.and.ip.eq.0.and.mod(n+1,nrst).eq.0)call rstpe
 
-         call MPI_BARRIER(MPI_COMM_WORLD,ierr)        		
+!         call MPI_BARRIER(MPI_COMM_WORLD,ierr)        		
 end subroutine push_wrapper
 !ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 subroutine diagnose(n)
@@ -6467,7 +6467,7 @@ end subroutine reporter
           MPI_REAL8, &
           lngbr,101, &
           tube_comm,stat,ierr)
-      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+!      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
       lbfs(:,:,:,:)=h(:,:,0,:,:)
       call MPI_SENDRECV(lbfs(0,0,0,0),bfcnt, &
           MPI_REAL8, &
@@ -6476,7 +6476,7 @@ end subroutine reporter
           MPI_REAL8, &
           rngbr,102, &
           tube_comm,stat,ierr)
-      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+!      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
 
       do i = 0,imx
          do j = 0,jmx
@@ -6510,7 +6510,7 @@ end subroutine reporter
           MPI_REAL8, &
           lngbr,103, &
           tube_comm,stat,ierr)
-      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+!      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
       lbfs(:,:,:,:)=myg(:,:,0,:,:)
       call MPI_SENDRECV(lbfs(0,0,0,0),bfcnt, &
           MPI_REAL8, &
@@ -6519,7 +6519,7 @@ end subroutine reporter
           MPI_REAL8, &
           rngbr,104, &
           tube_comm,stat,ierr)
-      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+!      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
 
       do i = 0,imx
          do j = 0,jmx
@@ -6740,7 +6740,7 @@ end subroutine reporter
 
          call MPI_BCAST(tmpz,kmx,MPI_DOUBLE_COMPLEX,master, &
             tube_comm,ierr)
-         call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+!         call MPI_BARRIER(MPI_COMM_WORLD,ierr)
          do k = 0,kmx-1
             k1 = k
             if(k>kmx/2)k1=kmx-k
