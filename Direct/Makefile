@@ -67,6 +67,11 @@ scaling: $(OUTDIR)/gem
 scaling: OPT = -FR -r8 -O2 -xMIC-AVX512
 scaling: LIBS += $$IPM
 
+.PHONY: scaling-hsw
+scaling-hsw: $(OUTDIR)/gem
+scaling-hsw: OPT = -FR -r8 -O2
+scaling-hsw: LIBS += $$IPM
+
 .PHONY: all
 all: $(OUTDIR)/gem
 
