@@ -53,6 +53,10 @@ debug: OPT = -FR -r8 -O0 -g
 vtune: $(OUTDIR)/gem
 vtune: OPT = -FR -r8 -O2 -xMIC-AVX512 -g -dynamic
 
+.PHONY: vtune-hsw
+vtune-hsw: $(OUTDIR)/gem
+vtune-hsw: OPT = -FR -r8 -O2 -g -dynamic
+
 .PHONY: ipm
 ipm: $(OUTDIR)/gem
 ipm: LIBS += $$IPM

@@ -5,3 +5,5 @@ ipm
 vectest
 scaling
 scaling-hsw
+vtune
+vtune-hsw
