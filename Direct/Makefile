@@ -45,6 +45,10 @@ MODOPT = -module $(OUTDIR)/modules
 .PHONY: build
 build: $(OUTDIR)/gem
 
+.PHONY: build-knl
+build-knl: $(OUTDIR)/gem
+build-knl: OPT = -FR -r8 -O2 -xMIC-AVX512
+
 .PHONY: debug
 debug: $(OUTDIR)/gem
 debug: OPT = -FR -r8 -O0 -g
@@ -81,11 +85,12 @@ all: $(OUTDIR)/gem
 
 .PHONY: clean
 clean:
-	rm -f $(OBJS) $(PLIB) *.mod *.optrpt
+	rm -rf $(OBJS) $(PLIB) $(OUTDIR)/modules/*.mod $(OUTDIR)/*.optrpt
 
 # generalized compilation rules
 $(OUTDIR)/gem: $(OBJS)
 	mkdir -p $(OUTDIR)/out $(OUTDIR)/dump $(OUTDIR)/matrix
+	cp *.txt $(OUTDIR)
 	$(F90) -o $(OUTDIR)/gem $(OPT) $(MODOPT) $(OBJS) $(PLIB) $(LIBS)
 
 # plib gets built first, so we can create our directories here
