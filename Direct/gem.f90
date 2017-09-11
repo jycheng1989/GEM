@@ -6,7 +6,7 @@
          use fft_wrapper
 	implicit none
 	integer :: n,i,j,k,ip
-
+ 	integer,parameter :: ioenabled=0
 	call initialize
 ! use the following two lines for r-theta contour plot
         if(iCrs_Sec==1)then
@@ -23,7 +23,7 @@
            call ftcamp
            goto 100
         end if
-
+        
         do  timestep=ncurr,nm
            tcurr = tcurr+dt
 
@@ -32,9 +32,11 @@
 	   call poisson(timestep-1,0)
 	   call field(timestep-1,0)
 	   call split_weight(timestep-1,0)
-!	   call diagnose(timestep-1)
-!           call reporter(timestep-1)
 
+           if (ioenabled.ne.0) then
+	       call diagnose(timestep-1)
+               call reporter(timestep-1)
+           end if
 	   call push_wrapper(timestep,1)
 
 	   call accumulate(timestep,1)
@@ -46,18 +48,18 @@
 	   call push_wrapper(timestep,0)
            if(mod(timestep,1000)==0)then
               do i=0,last 
-!                 if(myid==i)write(*,*)myid,mm(1),mme
+                 if(myid==i.and.ioenabled.ne.0)write(*,*)myid,mm(1),mme
                  call MPI_BARRIER(MPI_COMM_WORLD,ierr)
               end do
            end if
 
          end do
-!         call ftcamp
+         if(ioenabled.ne.0) call ftcamp
 	 lasttm=MPI_WTIME()
 	 tottm=lasttm-starttm
-!	 write(*,*)'ps time=',pstm,'tot time=',tottm
+	 if(ioenabled.ne.0) write(*,*)'ps time=',pstm,'tot time=',tottm
          do i=0,last 
-!            if(myid==i)write(*,*)myid,mm(1),mme
+            if(myid==i.and.ioenabled.ne.0)write(*,*)myid,mm(1),mme
             call MPI_BARRIER(MPI_COMM_WORLD,ierr)
          end do
  100     call MPI_FINALIZE(ierr)
@@ -1604,6 +1606,7 @@ END INTERFACE
       REAL(8) :: sgnx,sgny,sz,myfe
       INTEGER :: i,i1,j,j1,k,k1,l,m,n,ifirst,nstep,ip,INFO
       INTEGER :: l1,m1,myk,myj,ix,ikx
+      INTEGER :: ioenabled
       COMPLEX(8) :: temp3dxy(0:imx-1,0:jmx-1,0:1),v(0:imx-1,0:jcnt-1,0:1)
       COMPLEX(8) :: sbuf(0:imx*jcnt*2-1),rbuf(0:imx*jmx*2-1)
       COMPLEX(8) :: sl(1:imx-1,0:jcnt-1,0:1)
@@ -1629,7 +1632,7 @@ END INTERFACE
           allocate(mx(imx-1,imx-1,0:jcnt-1,0:1),formphi(0:imx-1,0:jcnt-1,0:1))
          allocate(formfe(0:imx-1,0:jcnt-1,0:1),ipiv(imx-1,imx-1,0:jcnt-1,0:1))
 
-         if(iget.eq.1) then
+         if(iget.eq.1.and.ioenabled.ne.0) then
             open(10000+MyId,file=fname,form='unformatted',status='old')
             read(10000+MyId)mx,ipiv
             close(10000+myid)
@@ -1743,7 +1746,7 @@ END INTERFACE
             end do
          end do
 
-         if(iget.eq.0) then
+         if(iget.eq.0.and.ioenabled.ne.0) then
             open(10000+MyId,file=fname,form='unformatted',status='unknown')
             write(10000+MyId)mx,ipiv
             close(10000+myid)
@@ -2081,6 +2084,7 @@ END INTERFACE
       REAL(8),dimension(:,:,:),allocatable :: formapa
       REAL(8) :: sgnx,sgny,sz,myfe
       integer,dimension(:,:,:,:),allocatable :: ipiv
+      INTEGER :: ioenabled
       INTEGER :: i,i1,j,j1,k,k1,l,m,n,ifirst,nstep,ip,INFO
       INTEGER :: l1,m1,myk,myj,ix,ikx,iext
       COMPLEX(8) :: temp3dxy(0:imx-1,0:jmx-1,0:1),v(0:imx-1,0:jcnt-1,0:1)
@@ -2101,7 +2105,7 @@ END INTERFACE
          allocate(nab2(0:imx-1,0:jcnt-1,0:imx-1,0:1),ipiv(imx-1,imx-1,0:jcnt-1,0:1))
          allocate(mx(imx-1,imx-1,0:jcnt-1,0:1),formapa(0:imx-1,0:jcnt-1,0:1))
 
-         if(iget.eq.1) then
+         if(iget.eq.1.and.ioenabled.ne.0) then
             open(20000+MyId,file=fname,form='unformatted',status='old')
             read(20000+MyId)mx,ipiv
             close(20000+myid)
@@ -2206,7 +2210,7 @@ END INTERFACE
             end do
          end do
 
-         if(iget.eq.0) then
+         if(iget.eq.0.and.ioenabled.ne.0) then
             open(20000+MyId,file=fname,form='unformatted',status='unknown')
             write(20000+MyId)mx,ipiv
             close(20000+myid)
@@ -3729,6 +3733,7 @@ END INTERFACE
       integer,dimension(:,:,:,:),allocatable :: ipiv
       REAL(8),dimension(:,:,:),allocatable :: formdpt
       REAL(8) :: sgnx,sgny,sz,myfe,u(0:imx,0:jmx,0:1)
+      INTEGER :: ioenabled
       INTEGER :: i,i1,j,j1,k,k1,l,m,n,ifirst,nstep,ip,INFO
       INTEGER :: l1,m1,myk,myj,ix,ikx
       COMPLEX(8) :: temp3dxy(0:imx-1,0:jmx-1,0:1),v(0:imx-1,0:jcnt-1,0:1)
@@ -3754,7 +3759,7 @@ END INTERFACE
          allocate(mx(imx-1,imx-1,0:jcnt-1,0:1),formdpt(0:imx-1,0:jcnt-1,0:1))
          allocate(ipiv(imx-1,imx-1,0:jcnt-1,0:1))
 
-         if(iget.eq.1) then
+         if(iget.eq.1.and.ioenabled.ne.0) then
             open(30000+MyId,file=fname,form='unformatted',status='old')
             read(30000+MyId)mx,ipiv
             close(30000+myid)
@@ -3865,7 +3870,7 @@ END INTERFACE
             end do
          end do
 
-         if(iget.eq.0) then
+         if(iget.eq.0.and.ioenabled.ne.0) then
             open(30000+MyId,file=fname,form='unformatted',status='unknown')
             write(30000+MyId)mx,ipiv
             close(30000+myid)
