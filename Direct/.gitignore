@@ -8,3 +8,6 @@ scaling
 scaling-hsw
 vtune
 vtune-hsw
+map
+*.ld
+*.a

@@ -3,7 +3,7 @@
 # * everything is built in a subdirectory so the root doesn't get cluttered
 #
 # * we can have independent build directories for different sets of compilation
-#   flags (this makes optimization easier)
+#   flags (this makes optimization and profiling easier)
 #
 # * rules are generalized, so to add a file, we just append it to $(SRCS)
 
@@ -79,6 +79,11 @@ scaling: LIBS += $$IPM
 scaling-hsw: $(OUTDIR)/gem
 scaling-hsw: OPT = -FR -r8 -O2
 scaling-hsw: LIBS += $$IPM
+
+.PHONY: map
+map: $(OUTDIR)/gem
+map: OPT = -FR -r8 -O2 -xMIC-AVX512 -g
+map: LIBS += -Wl,@./allinea-profiler.ld
 
 .PHONY: all
 all: $(OUTDIR)/gem
