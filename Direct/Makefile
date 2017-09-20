@@ -67,7 +67,7 @@ ipm: LIBS += $$IPM
 
 .PHONY: vectest
 vectest: $(OUTDIR)/gem
-vectest: OPT = -FR -r8 -O2 -xMIC-AVX512 -qopt-report
+vectest: OPT = -FR -r8 -O2 -xMIC-AVX512 -qopenmp -qopt-report=5
 vectest: LIBS += $$IPM
 
 .PHONY: scaling
@@ -83,6 +83,7 @@ scaling-hsw: LIBS += $$IPM
 .PHONY: map
 map: $(OUTDIR)/gem
 map: OPT = -FR -r8 -O2 -xMIC-AVX512 -g
+#map: OPT = -FR -r8 -O2 -g
 map: LIBS += -Wl,@./allinea-profiler.ld
 
 .PHONY: all
