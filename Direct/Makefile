@@ -37,7 +37,7 @@ endif
 # default options
 LIBS = $(DFFTPACK) -mkl
 #OPT = -FR -r8 -heap-arrays -O2 -g -traceback -check bounds
-OPT = -FR -r8 -O2
+OPT = -FR -r8 -O2 -qopenmp
 MODOPT = -module $(OUTDIR)/modules
 
 
@@ -47,7 +47,7 @@ build: $(OUTDIR)/gem
 
 .PHONY: build-knl
 build-knl: $(OUTDIR)/gem
-build-knl: OPT = -FR -r8 -O2 -xMIC-AVX512
+build-knl: OPT = -FR -r8 -O2 -xMIC-AVX512 -qopenmp
 
 .PHONY: debug
 debug: $(OUTDIR)/gem
@@ -55,7 +55,7 @@ debug: OPT = -FR -r8 -O0 -g
 
 .PHONY: vtune
 vtune: $(OUTDIR)/gem
-vtune: OPT = -FR -r8 -O2 -xMIC-AVX512 -g -dynamic
+vtune: OPT = -FR -r8 -O2 -xMIC-AVX512 -qopenmp -g -dynamic
 
 .PHONY: vtune-hsw
 vtune-hsw: $(OUTDIR)/gem
@@ -82,7 +82,7 @@ scaling-hsw: LIBS += $$IPM
 
 .PHONY: map
 map: $(OUTDIR)/gem
-map: OPT = -FR -r8 -O2 -xMIC-AVX512 -g
+map: OPT = -FR -r8 -O2 -g -xMIC-AVX512
 #map: OPT = -FR -r8 -O2 -g
 map: LIBS += -Wl,@./allinea-profiler.ld
 

@@ -26,7 +26,9 @@
         
         do  timestep=ncurr,nm
            tcurr = tcurr+dt
-
+           if (myid.eq.master) then
+              write (*,*) "starting loop, t = ", tcurr
+           end if
 	   call accumulate(timestep-1,0)
 	   call ampere(timestep-1,0)
 	   call poisson(timestep-1,0)
@@ -36,7 +38,10 @@
            if (ioenabled.ne.0) then
 	       call diagnose(timestep-1)
                call reporter(timestep-1)
+            else
+               call MPI_BARRIER(MPI_COMM_WORLD,ierr)
            end if
+
 	   call push_wrapper(timestep,1)
 
 	   call accumulate(timestep,1)
@@ -4145,7 +4150,6 @@ END INTERFACE
             myjpey(i,j,k) = myjpey(i,j,k)+wght*ydot
             mydnidt(i,j,k) = mydnidt(i,j,k)+wght1
  200     continue
-
       enddo
 
 !   enforce periodicity
@@ -4188,6 +4192,7 @@ END INTERFACE
       myupey = 0.
       myupazd = 0.
       mydnedt = 0.
+
       do m=1,mme
          dv=(dx*dy*dz)
 
@@ -4930,6 +4935,10 @@ end subroutine reporter
          den0apa(:,:,:) = 0.
          return
       end if
+
+!$OMP PARALLEL DO PRIVATE(i,j,k,r,vpar,wx0,wx1,wz0,wz1,th,ter,xnp,b,vfac)&
+!$OMP& PRIVATE(grcgtp,radiusp,bfldp,dbdrp,psipp,fp,enerb,zdot,dv,wght0,wght1)&
+!$OMP& PRIVATE(xt,yt,zt,aparp)
       do m=1,mme
          r=x3e(m)-0.5*lx+lr0
          vpar = u3e(m)
@@ -4968,8 +4977,6 @@ end subroutine reporter
             fp = wx0*f(i)+wx1*f(i+1)
             b=1.-tor+tor*bfldp
             enerb=(mue3(m)+emass*vpar*vpar/b)/qel*tor
-            zdot =  vpar*(1-tor+tor*q0*br0/radiusp/b*psipp*grcgtp)/jfnp &
-                 +q0*br0*enerb/(b*b)*fp/radiusp*dbdrp*grcgtp/jfnp
          end if
 
          dv=(dx*dy*dz)
@@ -4996,6 +5003,7 @@ end subroutine reporter
              + w111(m)*apar(i+1,j+1,k+1)
 
          if(itp==0)then
+!$OMP CRITICAL
             wght1 = wght1*aparp*vpar*vpar/amie/ter*xnp 
             myupa0(i,j,k)      =myupa0(i,j,k)+wght1*w000(m)
             myupa0(i+1,j,k)    =myupa0(i+1,j,k)+wght1*w100(m)
@@ -5005,9 +5013,14 @@ end subroutine reporter
             myupa0(i+1,j,k+1)  =myupa0(i+1,j,k+1)+wght1*w101(m)
             myupa0(i,j+1,k+1)  =myupa0(i,j+1,k+1)+wght1*w011(m)
             myupa0(i+1,j+1,k+1)=myupa0(i+1,j+1,k+1)+wght1*w111(m)
+!$OMP END CRITICAL
          end if
+
          if(itp==1)then
+            zdot =  vpar*(1-tor+tor*q0*br0/radiusp/b*psipp*grcgtp)/jfnp &
+                 +q0*br0*enerb/(b*b)*fp/radiusp*dbdrp*grcgtp/jfnp
             wght0 = wght0*aparp*vpar*zdot/amie/ter*xnp 
+!$OMP CRITICAL
             myupa(i,j,k)      =myupa(i,j,k)+wght0*w000(m)
             myupa(i+1,j,k)    =myupa(i+1,j,k)+wght0*w100(m)
             myupa(i,j+1,k)    =myupa(i,j+1,k)+wght0*w010(m)
@@ -5016,8 +5029,9 @@ end subroutine reporter
             myupa(i+1,j,k+1)  =myupa(i+1,j,k+1)+wght0*w101(m)
             myupa(i,j+1,k+1)  =myupa(i,j+1,k+1)+wght0*w011(m)
             myupa(i+1,j+1,k+1)=myupa(i+1,j+1,k+1)+wght0*w111(m)
-
+!$OMP END CRITICAL
             wght0 = 1./dv*aparp*vpar/ter*xnp 
+!$OMP CRITICAL
             myden0(i,j,k)      =myden0(i,j,k)+wght0*w000(m)
             myden0(i+1,j,k)    =myden0(i+1,j,k)+wght0*w100(m)
             myden0(i,j+1,k)    =myden0(i,j+1,k)+wght0*w010(m)
@@ -5026,8 +5040,10 @@ end subroutine reporter
             myden0(i+1,j,k+1)  =myden0(i+1,j,k+1)+wght0*w101(m)
             myden0(i,j+1,k+1)  =myden0(i,j+1,k+1)+wght0*w011(m)
             myden0(i+1,j+1,k+1)=myden0(i+1,j+1,k+1)+wght0*w111(m)
+!$OMP END CRITICAL
          end if
       enddo
+!$OMP END PARALLEL DO
 
 !   enforce periodicity
       if(itp==1)call enforce(myupa(:,:,:))
