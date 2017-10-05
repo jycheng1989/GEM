@@ -7,6 +7,7 @@
 	implicit none
 	integer :: n,i,j,k,ip
  	integer,parameter :: ioenabled=0
+        integer :: funclog
 	call initialize
 ! use the following two lines for r-theta contour plot
         if(iCrs_Sec==1)then
@@ -24,16 +25,23 @@
            goto 100
         end if
         
+        funclog = 1.and.(myid.eq.master)
+
         do  timestep=ncurr,nm
            tcurr = tcurr+dt
-           if (myid.eq.master) then
-              write (*,*) "starting loop, t = ", tcurr
-           end if
-	   call accumulate(timestep-1,0)
+
+           if (funclog) write (*,*) "starting loop, n = ", timestep
+
+           if (funclog) write (*,*) " starting accumulate"
+           call accumulate(timestep-1,0)
+           if (funclog) write (*,*) " starting ampere"
 	   call ampere(timestep-1,0)
+           if (funclog) write (*,*) " starting poisson"
 	   call poisson(timestep-1,0)
+           if (funclog) write (*,*) " starting field"
 	   call field(timestep-1,0)
-	   call split_weight(timestep-1,0)
+           if (funclog) write (*,*) " starting split_weight"
+	   call split_weight(timestep-1,0, 0)
 
            if (ioenabled.ne.0) then
 	       call diagnose(timestep-1)
@@ -42,22 +50,29 @@
                call MPI_BARRIER(MPI_COMM_WORLD,ierr)
            end if
 
+           if (funclog) write (*,*) " starting push_wrapper"
 	   call push_wrapper(timestep,1)
 
+           if (funclog) write (*,*) " starting accumulate"
 	   call accumulate(timestep,1)
+           if (funclog) write (*,*) " starting ampere"
 	   call ampere(timestep,1)
+           if (funclog) write (*,*) " starting poisson"
 	   call poisson(timestep,1)
+           if (funclog) write (*,*) " starting field"
 	   call field(timestep,1)
-	   call split_weight(timestep,1)
+           if (funclog) write (*,*) " starting split_weight"
+	   call split_weight(timestep,1, 0)
 
+           if (funclog) write (*,*) " starting push_wrapper"
 	   call push_wrapper(timestep,0)
+
            if(mod(timestep,1000)==0)then
               do i=0,last 
                  if(myid==i.and.ioenabled.ne.0)write(*,*)myid,mm(1),mme
                  call MPI_BARRIER(MPI_COMM_WORLD,ierr)
               end do
            end if
-
          end do
          if(ioenabled.ne.0) call ftcamp
 	 lasttm=MPI_WTIME()
@@ -4785,23 +4800,46 @@ subroutine ampere(n,ip)
 !        call MPI_BARRIER(MPI_COMM_WORLD,ierr)        
 end subroutine ampere
 !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-subroutine split_weight(n,ip)
-         use gem_com
-         use equil
-	implicit none
+subroutine split_weight(n,ip, profjie)
+  use gem_com
+  use equil
+  implicit none
+  
+  integer :: n,i,j,k,ip
+  integer :: itr,profjie
+  real(8) :: proftime
 
-	integer :: n,i,j,k,ip
-            if(isg.gt.0..and.ifluid.eq.1)then
-               call jie(ip,n)
-	if(idg.eq.1)write(*,*)'pass jie'
-               call drdt(ip)
-	if(idg.eq.1)write(*,*)'pass drdt'
-               if(iperi==1)call dpdtL(ip)
-               if(iperi==0)call dpdt(ip)
-	if(idg.eq.1)write(*,*)'pass dpdt'
-            end if
-	if(idg.eq.1)write(*,*)'pass split_weight'
-!        call MPI_BARRIER(MPI_COMM_WORLD,ierr)        
+  if(isg.gt.0..and.ifluid.eq.1)then
+
+     ! profiling
+     if (profjie) then
+        call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+        proftime = MPI_WTIME()
+
+        do itr = 1, 50
+           call jie(ip,n)
+        end do
+
+        call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+        proftime = MPI_WTIME() - proftime
+
+        ! record time
+        if(myid.eq.master) then
+           write (*,*) 'time for 50 iterations of jie: ', proftime
+        end if
+     else
+        call jie(ip,n)
+     end if
+
+     if(idg.eq.1)write(*,*)'pass jie'
+     call drdt(ip)
+     if(idg.eq.1)write(*,*)'pass drdt'
+     if(iperi==1)call dpdtL(ip)
+     if(iperi==0)call dpdt(ip)
+     if(idg.eq.1)write(*,*)'pass dpdt'
+  end if
+  if(idg.eq.1)write(*,*)'pass split_weight'
+  !        call MPI_BARRIER(MPI_COMM_WORLD,ierr)
 end subroutine split_weight
 !ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 subroutine field(n,ip)
