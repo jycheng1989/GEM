@@ -4971,6 +4971,10 @@ end subroutine reporter
       REAL(8) :: lbfr(0:imx,0:jmx)
       REAL(8) :: rbfr(0:imx,0:jmx)
       real(8) :: myupa(0:imx,0:jmx,0:1),myupa0(0:imx,0:jmx,0:1),myden0(0:imx,0:jmx,0:1)
+
+      real(8) :: iar(1:mme), jar(1:mme), kar(1:mme)
+      real(8) :: wght1ar(1:mme), wght0ar1(1:mme), wght0ar2(1:mme)
+      
       REAL(8) :: dbdrp,dbdtp,grcgtp,bfldp,fp,radiusp,dydrp,qhatp,psipp,jfnp
       REAL(8) :: grp,gxdgyp
       REAL(8) :: zdot
@@ -5061,47 +5065,65 @@ end subroutine reporter
              + w111(m)*apar(i+1,j+1,k+1)
 
          if(itp==0)then
-!$OMP CRITICAL
-            wght1 = wght1*aparp*vpar*vpar/amie/ter*xnp 
-            myupa0(i,j,k)      =myupa0(i,j,k)+wght1*w000(m)
-            myupa0(i+1,j,k)    =myupa0(i+1,j,k)+wght1*w100(m)
-            myupa0(i,j+1,k)    =myupa0(i,j+1,k)+wght1*w010(m)
-            myupa0(i+1,j+1,k)  =myupa0(i+1,j+1,k)+wght1*w110(m)
-            myupa0(i,j,k+1)    =myupa0(i,j,k+1)+wght1*w001(m)
-            myupa0(i+1,j,k+1)  =myupa0(i+1,j,k+1)+wght1*w101(m)
-            myupa0(i,j+1,k+1)  =myupa0(i,j+1,k+1)+wght1*w011(m)
-            myupa0(i+1,j+1,k+1)=myupa0(i+1,j+1,k+1)+wght1*w111(m)
-!$OMP END CRITICAL
+            wght1ar(m) = wght1*aparp*vpar*vpar/amie/ter*xnp
          end if
 
          if(itp==1)then
             zdot =  vpar*(1-tor+tor*q0*br0/radiusp/b*psipp*grcgtp)/jfnp &
                  +q0*br0*enerb/(b*b)*fp/radiusp*dbdrp*grcgtp/jfnp
-            wght0 = wght0*aparp*vpar*zdot/amie/ter*xnp 
-!$OMP CRITICAL
-            myupa(i,j,k)      =myupa(i,j,k)+wght0*w000(m)
-            myupa(i+1,j,k)    =myupa(i+1,j,k)+wght0*w100(m)
-            myupa(i,j+1,k)    =myupa(i,j+1,k)+wght0*w010(m)
-            myupa(i+1,j+1,k)  =myupa(i+1,j+1,k)+wght0*w110(m)
-            myupa(i,j,k+1)    =myupa(i,j,k+1)+wght0*w001(m)
-            myupa(i+1,j,k+1)  =myupa(i+1,j,k+1)+wght0*w101(m)
-            myupa(i,j+1,k+1)  =myupa(i,j+1,k+1)+wght0*w011(m)
-            myupa(i+1,j+1,k+1)=myupa(i+1,j+1,k+1)+wght0*w111(m)
-!$OMP END CRITICAL
-            wght0 = 1./dv*aparp*vpar/ter*xnp 
-!$OMP CRITICAL
-            myden0(i,j,k)      =myden0(i,j,k)+wght0*w000(m)
-            myden0(i+1,j,k)    =myden0(i+1,j,k)+wght0*w100(m)
-            myden0(i,j+1,k)    =myden0(i,j+1,k)+wght0*w010(m)
-            myden0(i+1,j+1,k)  =myden0(i+1,j+1,k)+wght0*w110(m)
-            myden0(i,j,k+1)    =myden0(i,j,k+1)+wght0*w001(m)
-            myden0(i+1,j,k+1)  =myden0(i+1,j,k+1)+wght0*w101(m)
-            myden0(i,j+1,k+1)  =myden0(i,j+1,k+1)+wght0*w011(m)
-            myden0(i+1,j+1,k+1)=myden0(i+1,j+1,k+1)+wght0*w111(m)
-!$OMP END CRITICAL
+            wght0ar1(m) = wght0*aparp*vpar*zdot/amie/ter*xnp
+            wght0ar2(m) = 1./dv*aparp*vpar/ter*xnp
          end if
       enddo
 !$OMP END PARALLEL DO
+
+      if (itp == 0) then
+!         !$OMP PARALLEL DO PRIVATE(i, j, k, wght1)
+         do m=1, mme
+            i = iar(m)
+            j = jar(m)
+            k = kar(m)
+            wght1 = wght1ar(m)
+
+            myupa0(i,j,k)      = myupa0(i,j,k)       + wght1 * w000(m)
+            myupa0(i+1,j,k)    = myupa0(i+1,j,k)     + wght1 * w100(m)
+            myupa0(i,j+1,k)    = myupa0(i,j+1,k)     + wght1 * w010(m)
+            myupa0(i+1,j+1,k)  = myupa0(i+1,j+1,k)   + wght1 * w110(m)
+            myupa0(i,j,k+1)    = myupa0(i,j,k+1)     + wght1 * w001(m)
+            myupa0(i+1,j,k+1)  = myupa0(i+1,j,k+1)   + wght1 * w101(m)
+            myupa0(i,j+1,k+1)  = myupa0(i,j+1,k+1)   + wght1 * w011(m)
+            myupa0(i+1,j+1,k+1)= myupa0(i+1,j+1,k+1) + wght1 * w111(m)
+         enddo
+!         !$OMP END PARALLEL DO
+      else if (itp == 1) then
+!         !$OMP PARALLEL DO PRIVATE(i, j, k, wght01, wght02)
+         do m=1, mme
+            i = iar(m)
+            j = jar(m)
+            k = kar(m)
+            wght01 = wght0ar1(m)
+            wght02 = wght0ar2(m)
+
+            myupa(i,j,k)      = myupa(i,j,k)       + wgth01 * w000(m)
+            myupa(i+1,j,k)    = myupa(i+1,j,k)     + wgth01 * w100(m)
+            myupa(i,j+1,k)    = myupa(i,j+1,k)     + wgth01 * w010(m)
+            myupa(i+1,j+1,k)  = myupa(i+1,j+1,k)   + wgth01 * w110(m)
+            myupa(i,j,k+1)    = myupa(i,j,k+1)     + wgth01 * w001(m)
+            myupa(i+1,j,k+1)  = myupa(i+1,j,k+1)   + wgth01 * w101(m)
+            myupa(i,j+1,k+1)  = myupa(i,j+1,k+1)   + wgth01 * w011(m)
+            myupa(i+1,j+1,k+1)= myupa(i+1,j+1,k+1) + wgth01 * w111(m)
+
+            myden0(i,j,k)      = myden0(i,j,k)       + wgth02 * w000(m)
+            myden0(i+1,j,k)    = myden0(i+1,j,k)     + wgth02 * w100(m)
+            myden0(i,j+1,k)    = myden0(i,j+1,k)     + wgth02 * w010(m)
+            myden0(i+1,j+1,k)  = myden0(i+1,j+1,k)   + wgth02 * w110(m)
+            myden0(i,j,k+1)    = myden0(i,j,k+1)     + wgth02 * w001(m)
+            myden0(i+1,j,k+1)  = myden0(i+1,j,k+1)   + wgth02 * w101(m)
+            myden0(i,j+1,k+1)  = myden0(i,j+1,k+1)   + wgth02 * w011(m)
+            myden0(i+1,j+1,k+1)= myden0(i+1,j+1,k+1) + wgth02 * w111(m)
+         enddo
+!         !$OMP END PARALLEL DO
+      end if
 
 !   enforce periodicity
       if(itp==1)call enforce(myupa(:,:,:))
