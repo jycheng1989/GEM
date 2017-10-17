@@ -7,7 +7,7 @@
 	implicit none
 	integer :: n,i,j,k,ip
  	integer,parameter :: ioenabled=0
-        integer :: funclog
+	integer :: funclog
 	call initialize
 ! use the following two lines for r-theta contour plot
         if(iCrs_Sec==1)then
@@ -35,7 +35,7 @@
            if (funclog) write (*,*) " starting accumulate"
            call accumulate(timestep-1,0)
            if (funclog) write (*,*) " starting ampere"
-	   call ampere(timestep-1,0)
+	   call ampere(timestep-1,0, 1)
            if (funclog) write (*,*) " starting poisson"
 	   call poisson(timestep-1,0)
            if (funclog) write (*,*) " starting field"
@@ -56,7 +56,7 @@
            if (funclog) write (*,*) " starting accumulate"
 	   call accumulate(timestep,1)
            if (funclog) write (*,*) " starting ampere"
-	   call ampere(timestep,1)
+	   call ampere(timestep,1, 1)
            if (funclog) write (*,*) " starting poisson"
 	   call poisson(timestep,1)
            if (funclog) write (*,*) " starting field"
@@ -74,6 +74,7 @@
               end do
            end if
          end do
+
          if(ioenabled.ne.0) call ftcamp
 	 lasttm=MPI_WTIME()
 	 tottm=lasttm-starttm
@@ -4701,18 +4702,37 @@ subroutine poisson(n,ip)
 !        call MPI_BARRIER(MPI_COMM_WORLD,ierr)        
 end subroutine poisson
 !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-subroutine ampere(n,ip)
+subroutine ampere(n,ip, profjpar)
          use gem_com
          use equil
 	implicit none
         integer :: iter=10
 	integer :: n,i,i1,j,k,ip
+ 	integer :: profjpar,iprof,proftime
         real(8) :: myrmsapa,rma(20),myavap(0:imx-1)
         real(8) :: myjaca(0:imx-1),jaca(0:imx-1)
 
         if(ifluid==1.and.beta.gt.1.e-8)then
            do i = 1,iter
               call jpar0(ip,n,i,0)
+
+              ! profiling
+              if (i == 1 .and. profjpar == 1) then
+                 call MPI_BARRIER(MPI_COMM_WORLD, ierr)
+                 proftime = MPI_WTIME()
+
+                 do iprof = 1, 50
+                    call jpar0(ip,n,i,0)
+                 enddo
+
+                 call MPI_BARRIER(MPI_COMM_WORLD, ierr)
+                 proftime = MPI_WTIME() - proftime
+
+                 if (myid.eq.master) then
+                    write (*,*) '50 iterations of jpar0: ', proftime
+                 end if
+              end if
+
               if(idg.eq.1)write(*,*)'pass jpar0'
               if(iperi==1)call ezampL(n,ip)
               if(iperi==0)call ezamp(n,ip)
