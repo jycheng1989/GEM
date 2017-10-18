@@ -41,7 +41,7 @@
            if (funclog) write (*,*) " starting field"
 	   call field(timestep-1,0)
            if (funclog) write (*,*) " starting split_weight"
-	   call split_weight(timestep-1,0, 0)
+	   call split_weight(timestep-1,0, 1)
 
            if (ioenabled.ne.0) then
 	       call diagnose(timestep-1)
@@ -62,7 +62,7 @@
            if (funclog) write (*,*) " starting field"
 	   call field(timestep,1)
            if (funclog) write (*,*) " starting split_weight"
-	   call split_weight(timestep,1, 0)
+	   call split_weight(timestep,1, 1)
 
            if (funclog) write (*,*) " starting push_wrapper"
 	   call push_wrapper(timestep,0)
@@ -4708,7 +4708,8 @@ subroutine ampere(n,ip, profjpar)
 	implicit none
         integer :: iter=10
 	integer :: n,i,i1,j,k,ip
- 	integer :: profjpar,iprof,proftime
+ 	integer :: profjpar,iprof
+ 	real :: proftime
         real(8) :: myrmsapa,rma(20),myavap(0:imx-1)
         real(8) :: myjaca(0:imx-1),jaca(0:imx-1)
 
@@ -4717,7 +4718,7 @@ subroutine ampere(n,ip, profjpar)
               call jpar0(ip,n,i,0)
 
               ! profiling
-              if (i == 1 .and. profjpar == 1) then
+              if (profjpar == 1) then
                  call MPI_BARRIER(MPI_COMM_WORLD, ierr)
                  proftime = MPI_WTIME()
 
@@ -4973,7 +4974,7 @@ end subroutine reporter
       real(8) :: myupa(0:imx,0:jmx,0:1),myupa0(0:imx,0:jmx,0:1),myden0(0:imx,0:jmx,0:1)
 
       real(8) :: iar(1:mme), jar(1:mme), kar(1:mme)
-      real(8) :: wght1ar(1:mme), wght0ar1(1:mme), wght0ar2(1:mme)
+      real(8) :: wght1ar(1:mme), wght0ar1(1:mme), wght0ar2(1:mme), wght01, wght02
       
       REAL(8) :: dbdrp,dbdtp,grcgtp,bfldp,fp,radiusp,dydrp,qhatp,psipp,jfnp
       REAL(8) :: grp,gxdgyp
@@ -4998,9 +4999,9 @@ end subroutine reporter
          return
       end if
 
-!$OMP PARALLEL DO PRIVATE(i,j,k,r,vpar,wx0,wx1,wz0,wz1,th,ter,xnp,b,vfac)&
-!$OMP& PRIVATE(grcgtp,radiusp,bfldp,dbdrp,psipp,fp,enerb,zdot,dv,wght0,wght1)&
-!$OMP& PRIVATE(xt,yt,zt,aparp)
+      !$OMP PARALLEL DO PRIVATE(i,j,k,r,vpar,wx0,wx1,wz0,wz1,th,ter,xnp,b,vfac)&
+      !$OMP& PRIVATE(grcgtp,radiusp,bfldp,dbdrp,psipp,fp,enerb,zdot,dv,wght0,wght1)&
+      !$OMP& PRIVATE(xt,yt,zt,aparp)
       do m=1,mme
          r=x3e(m)-0.5*lx+lr0
          vpar = u3e(m)
@@ -5075,10 +5076,10 @@ end subroutine reporter
             wght0ar2(m) = 1./dv*aparp*vpar/ter*xnp
          end if
       enddo
-!$OMP END PARALLEL DO
+      !$OMP END PARALLEL DO
 
       if (itp == 0) then
-!         !$OMP PARALLEL DO PRIVATE(i, j, k, wght1)
+         !$OMP PARALLEL DO PRIVATE(i, j, k, wght1)
          do m=1, mme
             i = iar(m)
             j = jar(m)
@@ -5094,9 +5095,9 @@ end subroutine reporter
             myupa0(i,j+1,k+1)  = myupa0(i,j+1,k+1)   + wght1 * w011(m)
             myupa0(i+1,j+1,k+1)= myupa0(i+1,j+1,k+1) + wght1 * w111(m)
          enddo
-!         !$OMP END PARALLEL DO
+         !$OMP END PARALLEL DO
       else if (itp == 1) then
-!         !$OMP PARALLEL DO PRIVATE(i, j, k, wght01, wght02)
+         !$OMP PARALLEL DO PRIVATE(i, j, k, wght01, wght02)
          do m=1, mme
             i = iar(m)
             j = jar(m)
@@ -5104,25 +5105,25 @@ end subroutine reporter
             wght01 = wght0ar1(m)
             wght02 = wght0ar2(m)
 
-            myupa(i,j,k)      = myupa(i,j,k)       + wgth01 * w000(m)
-            myupa(i+1,j,k)    = myupa(i+1,j,k)     + wgth01 * w100(m)
-            myupa(i,j+1,k)    = myupa(i,j+1,k)     + wgth01 * w010(m)
-            myupa(i+1,j+1,k)  = myupa(i+1,j+1,k)   + wgth01 * w110(m)
-            myupa(i,j,k+1)    = myupa(i,j,k+1)     + wgth01 * w001(m)
-            myupa(i+1,j,k+1)  = myupa(i+1,j,k+1)   + wgth01 * w101(m)
-            myupa(i,j+1,k+1)  = myupa(i,j+1,k+1)   + wgth01 * w011(m)
-            myupa(i+1,j+1,k+1)= myupa(i+1,j+1,k+1) + wgth01 * w111(m)
+            myupa(i,j,k)      = myupa(i,j,k)       + wght01 * w000(m)
+            myupa(i+1,j,k)    = myupa(i+1,j,k)     + wght01 * w100(m)
+            myupa(i,j+1,k)    = myupa(i,j+1,k)     + wght01 * w010(m)
+            myupa(i+1,j+1,k)  = myupa(i+1,j+1,k)   + wght01 * w110(m)
+            myupa(i,j,k+1)    = myupa(i,j,k+1)     + wght01 * w001(m)
+            myupa(i+1,j,k+1)  = myupa(i+1,j,k+1)   + wght01 * w101(m)
+            myupa(i,j+1,k+1)  = myupa(i,j+1,k+1)   + wght01 * w011(m)
+            myupa(i+1,j+1,k+1)= myupa(i+1,j+1,k+1) + wght01 * w111(m)
 
-            myden0(i,j,k)      = myden0(i,j,k)       + wgth02 * w000(m)
-            myden0(i+1,j,k)    = myden0(i+1,j,k)     + wgth02 * w100(m)
-            myden0(i,j+1,k)    = myden0(i,j+1,k)     + wgth02 * w010(m)
-            myden0(i+1,j+1,k)  = myden0(i+1,j+1,k)   + wgth02 * w110(m)
-            myden0(i,j,k+1)    = myden0(i,j,k+1)     + wgth02 * w001(m)
-            myden0(i+1,j,k+1)  = myden0(i+1,j,k+1)   + wgth02 * w101(m)
-            myden0(i,j+1,k+1)  = myden0(i,j+1,k+1)   + wgth02 * w011(m)
-            myden0(i+1,j+1,k+1)= myden0(i+1,j+1,k+1) + wgth02 * w111(m)
+            myden0(i,j,k)      = myden0(i,j,k)       + wght02 * w000(m)
+            myden0(i+1,j,k)    = myden0(i+1,j,k)     + wght02 * w100(m)
+            myden0(i,j+1,k)    = myden0(i,j+1,k)     + wght02 * w010(m)
+            myden0(i+1,j+1,k)  = myden0(i+1,j+1,k)   + wght02 * w110(m)
+            myden0(i,j,k+1)    = myden0(i,j,k+1)     + wght02 * w001(m)
+            myden0(i+1,j,k+1)  = myden0(i+1,j,k+1)   + wght02 * w101(m)
+            myden0(i,j+1,k+1)  = myden0(i,j+1,k+1)   + wght02 * w011(m)
+            myden0(i+1,j+1,k+1)= myden0(i+1,j+1,k+1) + wght02 * w111(m)
          enddo
-!         !$OMP END PARALLEL DO
+         !$OMP END PARALLEL DO
       end if
 
 !   enforce periodicity
