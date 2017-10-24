@@ -5104,7 +5104,7 @@ end subroutine reporter
             j = jar(m)
             k = kar(m)
             wght1 = wght1ar(m)
-            !$OMP CRITICAL crit_myupa0
+            !$OMP CRITICAL (crit_myupa0)
             myupa0(i,j,k)      = myupa0(i,j,k)       + wght1 * w000(m)
             myupa0(i+1,j,k)    = myupa0(i+1,j,k)     + wght1 * w100(m)
             myupa0(i,j+1,k)    = myupa0(i,j+1,k)     + wght1 * w010(m)
@@ -5113,7 +5113,7 @@ end subroutine reporter
             myupa0(i+1,j,k+1)  = myupa0(i+1,j,k+1)   + wght1 * w101(m)
             myupa0(i,j+1,k+1)  = myupa0(i,j+1,k+1)   + wght1 * w011(m)
             myupa0(i+1,j+1,k+1)= myupa0(i+1,j+1,k+1) + wght1 * w111(m)
-            !$OMP END CRITICAL crit_myupa0
+            !$OMP END CRITICAL (crit_myupa0)
          enddo
          !$OMP END PARALLEL DO
       else if (itp == 1) then
@@ -5125,7 +5125,7 @@ end subroutine reporter
             wght01 = wght0ar1(m)
             wght02 = wght0ar2(m)
 
-            !$OMP CRITICAL crit_myupa
+            !$OMP CRITICAL (crit_myupa)
             myupa(i,j,k)      = myupa(i,j,k)       + wght01 * w000(m)
             myupa(i+1,j,k)    = myupa(i+1,j,k)     + wght01 * w100(m)
             myupa(i,j+1,k)    = myupa(i,j+1,k)     + wght01 * w010(m)
@@ -5134,9 +5134,9 @@ end subroutine reporter
             myupa(i+1,j,k+1)  = myupa(i+1,j,k+1)   + wght01 * w101(m)
             myupa(i,j+1,k+1)  = myupa(i,j+1,k+1)   + wght01 * w011(m)
             myupa(i+1,j+1,k+1)= myupa(i+1,j+1,k+1) + wght01 * w111(m)
-            !$OMP END CRITICAL crit_myupa
+            !$OMP END CRITICAL (crit_myupa)
             
-            !$OMP CRITICAL crit_myden0
+            !$OMP CRITICAL (crit_myden0)
             myden0(i,j,k)      = myden0(i,j,k)       + wght02 * w000(m)
             myden0(i+1,j,k)    = myden0(i+1,j,k)     + wght02 * w100(m)
             myden0(i,j+1,k)    = myden0(i,j+1,k)     + wght02 * w010(m)
@@ -5145,7 +5145,7 @@ end subroutine reporter
             myden0(i+1,j,k+1)  = myden0(i+1,j,k+1)   + wght02 * w101(m)
             myden0(i,j+1,k+1)  = myden0(i,j+1,k+1)   + wght02 * w011(m)
             myden0(i+1,j+1,k+1)= myden0(i+1,j+1,k+1) + wght02 * w111(m)
-            !$OMP END CRITICAL crit_myden0
+            !$OMP END CRITICAL (crit_myden0)
          enddo
          !$OMP END PARALLEL DO
       end if
