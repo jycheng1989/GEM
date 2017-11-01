@@ -131,6 +131,8 @@
       REAL(8) :: grp,gxdgyp,jacp,jfnp,gn0ep,gt0ep,gt0ip,grdgtp,gthp
       REAL(8),DIMENSION (1:5) :: gn0sp
       REAL(8) :: wx0,wx1,wz0,wz1,b
+      include "omp_lib.h"
+      nthreads = omp_get_max_threads()
 
       IU=cmplx(0.,1.)
       pi=4.0*atan(1.0)
@@ -3983,6 +3985,7 @@ END INTERFACE
       use gem_com
       use equil
       implicit none
+      include "omp_lib.h"
       REAL(8) :: phip,exp1,eyp,ezp,delbxp,delbyp,dpdzp,dadzp,aparp
       REAL(8) :: enerb,vxdum,dum,xdot,ydot,zdot,pidum,dum1,dum2
       INTEGER :: m,n,i,j,k,l,ns,ip,nonfi,nonfe
@@ -4005,6 +4008,7 @@ END INTERFACE
       ! position and weights for each particle (for loop strip-mining)
       real(8) :: iar(1:mme), jar(1:mme), kar(1:mme)
       real(8) :: wght0ar(1:mme), wght1ar(1:mme), wght2ar(1:mme)
+      real(8) :: xdotar(1:mme), ydotar(1:mme)
 
       nonfi = 1 
       nonfe = 1 
@@ -4378,6 +4382,8 @@ END INTERFACE
          wght0ar(m) = wght0
          wght1ar(m) = wght1
          wght2ar(m) = wght2
+         xdotar(m) = xdot
+         ydotar(m) = ydot
       enddo
 
       do m = 1, mme
@@ -4387,42 +4393,44 @@ END INTERFACE
          wght0 = wght0ar(m)
          wght1 = wght1ar(m)
          wght2 = wght2ar(m)
+         xdot = xdotar(m)
+         ydot = ydotar(m)
          
-         myupex(i,j,k)      =myupex(i,j,k)+wght1*w000(m)*xdot
-         myupex(i+1,j,k)    =myupex(i+1,j,k)+wght1*w100(m)*xdot
-         myupex(i,j+1,k)    =myupex(i,j+1,k)+wght1*w010(m)*xdot
-         myupex(i+1,j+1,k)  =myupex(i+1,j+1,k)+wght1*w110(m)*xdot
-         myupex(i,j,k+1)    =myupex(i,j,k+1)+wght1*w001(m)*xdot
-         myupex(i+1,j,k+1)  =myupex(i+1,j,k+1)+wght1*w101(m)*xdot
-         myupex(i,j+1,k+1)  =myupex(i,j+1,k+1)+wght1*w011(m)*xdot
-         myupex(i+1,j+1,k+1)=myupex(i+1,j+1,k+1)+wght1*w111(m)*xdot
+         myupex(i,j,k)      =myupex(i,j,k) + wght1*w000(m)*xdot
+         myupex(i+1,j,k)    =myupex(i+1,j,k) + wght1*w100(m)*xdot
+         myupex(i,j+1,k)    =myupex(i,j+1,k) + wght1*w010(m)*xdot
+         myupex(i+1,j+1,k)  =myupex(i+1,j+1,k) + wght1*w110(m)*xdot
+         myupex(i,j,k+1)    =myupex(i,j,k+1) + wght1*w001(m)*xdot
+         myupex(i+1,j,k+1)  =myupex(i+1,j,k+1) + wght1*w101(m)*xdot
+         myupex(i,j+1,k+1)  =myupex(i,j+1,k+1) + wght1*w011(m)*xdot
+         myupex(i+1,j+1,k+1)=myupex(i+1,j+1,k+1) + wght1*w111(m)*xdot
 
-         myupey(i,j,k)      =myupey(i,j,k)+wght1*w000(m)*ydot
-         myupey(i+1,j,k)    =myupey(i+1,j,k)+wght1*w100(m)*ydot
-         myupey(i,j+1,k)    =myupey(i,j+1,k)+wght1*w010(m)*ydot
-         myupey(i+1,j+1,k)  =myupey(i+1,j+1,k)+wght1*w110(m)*ydot
-         myupey(i,j,k+1)    =myupey(i,j,k+1)+wght1*w001(m)*ydot
-         myupey(i+1,j,k+1)  =myupey(i+1,j,k+1)+wght1*w101(m)*ydot
-         myupey(i,j+1,k+1)  =myupey(i,j+1,k+1)+wght1*w011(m)*ydot
-         myupey(i+1,j+1,k+1)=myupey(i+1,j+1,k+1)+wght1*w111(m)*ydot
+         myupey(i,j,k)      =myupey(i,j,k) + wght1*w000(m)*ydot
+         myupey(i+1,j,k)    =myupey(i+1,j,k) + wght1*w100(m)*ydot
+         myupey(i,j+1,k)    =myupey(i,j+1,k) + wght1*w010(m)*ydot
+         myupey(i+1,j+1,k)  =myupey(i+1,j+1,k) + wght1*w110(m)*ydot
+         myupey(i,j,k+1)    =myupey(i,j,k+1) + wght1*w001(m)*ydot
+         myupey(i+1,j,k+1)  =myupey(i+1,j,k+1) + wght1*w101(m)*ydot
+         myupey(i,j+1,k+1)  =myupey(i,j+1,k+1) + wght1*w011(m)*ydot
+         myupey(i+1,j+1,k+1)=myupey(i+1,j+1,k+1) + wght1*w111(m)*ydot
 
-         myupazd(i,j,k)      =myupazd(i,j,k)+wght2*w000(m)
-         myupazd(i+1,j,k)    =myupazd(i+1,j,k)+wght2*w100(m)
-         myupazd(i,j+1,k)    =myupazd(i,j+1,k)+wght2*w010(m)
-         myupazd(i+1,j+1,k)  =myupazd(i+1,j+1,k)+wght2*w110(m)
-         myupazd(i,j,k+1)    =myupazd(i,j,k+1)+wght2*w001(m)
-         myupazd(i+1,j,k+1)  =myupazd(i+1,j,k+1)+wght2*w101(m)
-         myupazd(i,j+1,k+1)  =myupazd(i,j+1,k+1)+wght2*w011(m)
-         myupazd(i+1,j+1,k+1)=myupazd(i+1,j+1,k+1)+wght2*w111(m)
+         myupazd(i,j,k)      =myupazd(i,j,k) + wght2*w000(m)
+         myupazd(i+1,j,k)    =myupazd(i+1,j,k) + wght2*w100(m)
+         myupazd(i,j+1,k)    =myupazd(i,j+1,k) + wght2*w010(m)
+         myupazd(i+1,j+1,k)  =myupazd(i+1,j+1,k) + wght2*w110(m)
+         myupazd(i,j,k+1)    =myupazd(i,j,k+1) + wght2*w001(m)
+         myupazd(i+1,j,k+1)  =myupazd(i+1,j,k+1) + wght2*w101(m)
+         myupazd(i,j+1,k+1)  =myupazd(i,j+1,k+1) + wght2*w011(m)
+         myupazd(i+1,j+1,k+1)=myupazd(i+1,j+1,k+1) + wght2*w111(m)
          
-         mydnedt(i,j,k)      =mydnedt(i,j,k)+wght0*w000(m)
-         mydnedt(i+1,j,k)    =mydnedt(i+1,j,k)+wght0*w100(m)
-         mydnedt(i,j+1,k)    =mydnedt(i,j+1,k)+wght0*w010(m)
-         mydnedt(i+1,j+1,k)  =mydnedt(i+1,j+1,k)+wght0*w110(m)
-         mydnedt(i,j,k+1)    =mydnedt(i,j,k+1)+wght0*w001(m)
-         mydnedt(i+1,j,k+1)  =mydnedt(i+1,j,k+1)+wght0*w101(m)
-         mydnedt(i,j+1,k+1)  =mydnedt(i,j+1,k+1)+wght0*w011(m)
-         mydnedt(i+1,j+1,k+1)=mydnedt(i+1,j+1,k+1)+wght0*w111(m)
+         mydnedt(i,j,k)      =mydnedt(i,j,k) + wght0*w000(m)
+         mydnedt(i+1,j,k)    =mydnedt(i+1,j,k) + wght0*w100(m)
+         mydnedt(i,j+1,k)    =mydnedt(i,j+1,k) + wght0*w010(m)
+         mydnedt(i+1,j+1,k)  =mydnedt(i+1,j+1,k) + wght0*w110(m)
+         mydnedt(i,j,k+1)    =mydnedt(i,j,k+1) + wght0*w001(m)
+         mydnedt(i+1,j,k+1)  =mydnedt(i+1,j,k+1) + wght0*w101(m)
+         mydnedt(i,j+1,k+1)  =mydnedt(i,j+1,k+1) + wght0*w011(m)
+         mydnedt(i+1,j+1,k+1)=mydnedt(i+1,j+1,k+1) + wght0*w111(m)
       end do
       
 !   enforce periodicity

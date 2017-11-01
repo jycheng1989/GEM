@@ -15,6 +15,9 @@ INTERFACE
   end function en3
 END INTERFACE
 
+! number of openmp threads
+integer :: nthreads
+
 integer :: imx,jmx,kmx,mmx,mmxe,nmx,nsmx,nsubd=8,&
                      modemx,ntube=4,nxpp,ngdx=5,nb=6, &
                      negrd=8,nlgrd=8
