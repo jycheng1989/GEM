@@ -35,7 +35,7 @@
            if (funclog) write (*,*) " starting accumulate"
            call accumulate(timestep-1,0)
            if (funclog) write (*,*) " starting ampere"
-	   call ampere(timestep-1,0, 0)
+	   call ampere(timestep-1,0, 1)
            if (funclog) write (*,*) " starting poisson"
 	   call poisson(timestep-1,0)
            if (funclog) write (*,*) " starting field"
@@ -56,7 +56,7 @@
            if (funclog) write (*,*) " starting accumulate"
 	   call accumulate(timestep,1)
            if (funclog) write (*,*) " starting ampere"
-	   call ampere(timestep,1, 0)
+	   call ampere(timestep,1, 1)
            if (funclog) write (*,*) " starting poisson"
 	   call poisson(timestep,1)
            if (funclog) write (*,*) " starting field"
@@ -3071,6 +3071,11 @@ END INTERFACE
       myavptch = 0.
       myaven = 0.
       pidum = 1./(pi*2)**1.5*(vwidthe)**3
+!      !$OMP PARALLEL DO PRIVATE(i,k,r,wx0,wx1,wz0,wz1,dbdrp,dbdtp)&
+!      !$OMP& PRIVATE(grcgtp,bfldp,radiusp,dydrp,qhatp,grp,gxdgyp,curvbzp,bdcrvbp,grdgtp)&
+!      !$OMP& PRIVATE(fp,jfnp,psipp,ter,kaptp,kapnp,xnp,vncp,b,psip2p,dipdrp,vfac,vp0)&
+!      !$OMP& PRIVATE(vpar,kap,wght,wght0,wght1,wght2,bstar,enerb,xdot,ydot,zdot,xt,yt)&
+!      !$OMP& PRIVATE(eyp,exp1,ezp,delbxp,delbyp,dum1,dum2,vxdum,phip)
       do m=1,mme
          r=x2e(m)-0.5*lx+lr0
 
@@ -5022,10 +5027,13 @@ end subroutine reporter
 
       real(8) :: iar(1:mme), jar(1:mme), kar(1:mme)
       real(8) :: wght1ar(1:mme), wght0ar1(1:mme), wght0ar2(1:mme), wght01, wght02
+      integer :: myjmin, myjmax
       
       REAL(8) :: dbdrp,dbdtp,grcgtp,bfldp,fp,radiusp,dydrp,qhatp,psipp,jfnp
       REAL(8) :: grp,gxdgyp
       REAL(8) :: zdot
+
+      include "omp_lib.h"
 
       pidum = 1./(pi*2)**1.5*(vwidthe)**3
       if(isuni.eq.0)pidum = 1.
@@ -5125,58 +5133,64 @@ end subroutine reporter
       enddo
       !$OMP END PARALLEL DO
 
+      !$OMP PARALLEL PRIVATE(m, i, j, k, wght1, myjmin, myjmax)
+      myjmin = omp_get_thread_num() * jmx / nthreads - 1
+      myjmax = (omp_get_thread_num() + 1) * jmx / nthreads - 1
+
       if (itp == 0) then
-         !$OMP PARALLEL DO PRIVATE(i, j, k, wght1)
          do m=1, mme
             i = iar(m)
             j = jar(m)
             k = kar(m)
             wght1 = wght1ar(m)
-            !$OMP CRITICAL (crit_myupa0)
-            myupa0(i,j,k)      = myupa0(i,j,k)       + wght1 * w000(m)
-            myupa0(i+1,j,k)    = myupa0(i+1,j,k)     + wght1 * w100(m)
-            myupa0(i,j+1,k)    = myupa0(i,j+1,k)     + wght1 * w010(m)
-            myupa0(i+1,j+1,k)  = myupa0(i+1,j+1,k)   + wght1 * w110(m)
-            myupa0(i,j,k+1)    = myupa0(i,j,k+1)     + wght1 * w001(m)
-            myupa0(i+1,j,k+1)  = myupa0(i+1,j,k+1)   + wght1 * w101(m)
-            myupa0(i,j+1,k+1)  = myupa0(i,j+1,k+1)   + wght1 * w011(m)
-            myupa0(i+1,j+1,k+1)= myupa0(i+1,j+1,k+1) + wght1 * w111(m)
-            !$OMP END CRITICAL (crit_myupa0)
-         enddo
-         !$OMP END PARALLEL DO
+
+            if (j > myjmin .and. j <= myjmax) then
+               myupa0(i,  j,  k)   = myupa0(i,j,k)       + wght1 * w000(m)
+               myupa0(i+1,j,  k)   = myupa0(i+1,j,k)     + wght1 * w100(m)
+               myupa0(i,  j,  k+1) = myupa0(i,j,k+1)     + wght1 * w001(m)
+               myupa0(i+1,j  ,k+1) = myupa0(i+1,j,k+1)   + wght1 * w101(m)
+            end if
+
+            if (j >= myjmin .and. j < myjmax) then
+               myupa0(i,  j+1,k)   = myupa0(i,j+1,k)     + wght1 * w010(m)
+               myupa0(i+1,j+1,k)   = myupa0(i+1,j+1,k)   + wght1 * w110(m)
+               myupa0(i,  j+1,k+1) = myupa0(i,j+1,k+1)   + wght1 * w011(m)
+               myupa0(i+1,j+1,k+1) = myupa0(i+1,j+1,k+1) + wght1 * w111(m)
+            end if
+         end do
       else if (itp == 1) then
-         !$OMP PARALLEL DO PRIVATE(i, j, k, wght01, wght02)
          do m=1, mme
             i = iar(m)
             j = jar(m)
             k = kar(m)
             wght01 = wght0ar1(m)
             wght02 = wght0ar2(m)
+            if (j > myjmin .and. j <= myjmax) then
+               myupa(i,  j,  k)   = myupa(i,  j,  k)   + wght01 * w000(m)
+               myupa(i+1,j,  k)   = myupa(i+1,j,  k)   + wght01 * w100(m)
+               myupa(i,  j,  k+1) = myupa(i,  j,  k+1) + wght01 * w001(m)
+               myupa(i+1,j,  k+1) = myupa(i+1,j,  k+1) + wght01 * w101(m)
 
-            !$OMP CRITICAL (crit_myupa)
-            myupa(i,j,k)      = myupa(i,j,k)       + wght01 * w000(m)
-            myupa(i+1,j,k)    = myupa(i+1,j,k)     + wght01 * w100(m)
-            myupa(i,j+1,k)    = myupa(i,j+1,k)     + wght01 * w010(m)
-            myupa(i+1,j+1,k)  = myupa(i+1,j+1,k)   + wght01 * w110(m)
-            myupa(i,j,k+1)    = myupa(i,j,k+1)     + wght01 * w001(m)
-            myupa(i+1,j,k+1)  = myupa(i+1,j,k+1)   + wght01 * w101(m)
-            myupa(i,j+1,k+1)  = myupa(i,j+1,k+1)   + wght01 * w011(m)
-            myupa(i+1,j+1,k+1)= myupa(i+1,j+1,k+1) + wght01 * w111(m)
-            !$OMP END CRITICAL (crit_myupa)
-            
-            !$OMP CRITICAL (crit_myden0)
-            myden0(i,j,k)      = myden0(i,j,k)       + wght02 * w000(m)
-            myden0(i+1,j,k)    = myden0(i+1,j,k)     + wght02 * w100(m)
-            myden0(i,j+1,k)    = myden0(i,j+1,k)     + wght02 * w010(m)
-            myden0(i+1,j+1,k)  = myden0(i+1,j+1,k)   + wght02 * w110(m)
-            myden0(i,j,k+1)    = myden0(i,j,k+1)     + wght02 * w001(m)
-            myden0(i+1,j,k+1)  = myden0(i+1,j,k+1)   + wght02 * w101(m)
-            myden0(i,j+1,k+1)  = myden0(i,j+1,k+1)   + wght02 * w011(m)
-            myden0(i+1,j+1,k+1)= myden0(i+1,j+1,k+1) + wght02 * w111(m)
-            !$OMP END CRITICAL (crit_myden0)
-         enddo
-         !$OMP END PARALLEL DO
+               myden0(i,  j,  k)   = myden0(i,  j,  k)   + wght02 * w000(m)
+               myden0(i+1,j,  k)   = myden0(i+1,j,  k)   + wght02 * w100(m)
+               myden0(i,  j,  k+1) = myden0(i,  j,  k+1) + wght02 * w001(m)
+               myden0(i+1,j,  k+1) = myden0(i+1,j,  k+1) + wght02 * w101(m)
+            end if
+
+            if (j >= myjmin .and. j < myjmax) then
+               myupa(i,  j+1,k)   = myupa(i,  j+1,k)   + wght01 * w010(m)
+               myupa(i+1,j+1,k)   = myupa(i+1,j+1,k)   + wght01 * w110(m)
+               myupa(i,  j+1,k+1) = myupa(i,  j+1,k+1) + wght01 * w011(m)
+               myupa(i+1,j+1,k+1) = myupa(i+1,j+1,k+1) + wght01 * w111(m)
+
+               myden0(i,  j+1,k)   = myden0(i,  j+1,k)   + wght02 * w010(m)
+               myden0(i+1,j+1,k)   = myden0(i+1,j+1,k)   + wght02 * w110(m)
+               myden0(i,  j+1,k+1) = myden0(i,  j+1,k+1) + wght02 * w011(m)
+               myden0(i+1,j+1,k+1) = myden0(i+1,j+1,k+1) + wght02 * w111(m)
+            end if
+         end do
       end if
+      !$OMP END PARALLEL
 
 !   enforce periodicity
       if(itp==1)call enforce(myupa(:,:,:))
