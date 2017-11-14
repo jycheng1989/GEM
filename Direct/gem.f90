@@ -25,7 +25,7 @@
            goto 100
         end if
         
-        funclog = 1.and.(myid.eq.master)
+        funclog = 0.and.(myid.eq.master)
 
         do  timestep=ncurr,nm
            tcurr = tcurr+dt
@@ -35,13 +35,13 @@
            if (funclog) write (*,*) " starting accumulate"
            call accumulate(timestep-1,0)
            if (funclog) write (*,*) " starting ampere"
-	   call ampere(timestep-1,0, 1)
+	   call ampere(timestep-1,0, 0)
            if (funclog) write (*,*) " starting poisson"
 	   call poisson(timestep-1,0)
            if (funclog) write (*,*) " starting field"
 	   call field(timestep-1,0)
            if (funclog) write (*,*) " starting split_weight"
-	   call split_weight(timestep-1,0, 1)
+	   call split_weight(timestep-1,0, 0)
 
            if (ioenabled.ne.0) then
 	       call diagnose(timestep-1)
@@ -51,21 +51,21 @@
            end if
 
            if (funclog) write (*,*) " starting push_wrapper"
-	   call push_wrapper(timestep,1)
+	   call push_wrapper(timestep,1,0)
 
            if (funclog) write (*,*) " starting accumulate"
 	   call accumulate(timestep,1)
            if (funclog) write (*,*) " starting ampere"
-	   call ampere(timestep,1, 1)
+	   call ampere(timestep,1, 0)
            if (funclog) write (*,*) " starting poisson"
 	   call poisson(timestep,1)
            if (funclog) write (*,*) " starting field"
 	   call field(timestep,1)
            if (funclog) write (*,*) " starting split_weight"
-	   call split_weight(timestep,1, 1)
+	   call split_weight(timestep,1, 0)
 
            if (funclog) write (*,*) " starting push_wrapper"
-	   call push_wrapper(timestep,0)
+	   call push_wrapper(timestep,0, 0)
 
            if(mod(timestep,1000)==0)then
               do i=0,last 
@@ -4217,6 +4217,11 @@ END INTERFACE
       myupazd = 0.
       mydnedt = 0.
 
+      !$OMP PARALLEL DO PRIVATE(i,j,k,dv,r,wx0,wx1,wz0,wz1,th,cost,sint,dbdrp,dbdtp)&
+      !$OMP& PRIVATE(grcgtp,bfldp,radiusp,dydrp,qhatp,grp,gxdgyp,curvbzp,bdcrvbp,grdgtp)&
+      !$OMP& PRIVATE(fp,jfnp,psipp,ter,kaptp,kapnp,xnp,vncp,b,psip2p,dipdrp,vfac,vp0)&
+      !$OMP& PRIVATE(vpar,kap,wght,wght0,wght1,wght2,bstar,enerb,xdot,ydot,zdot,xt,yt)&
+      !$OMP& PRIVATE(eyp,exp1,ezp,delbxp,delbyp,dum1,dum2,vxdum,phip)
       do m=1,mme
          dv=(dx*dy*dz)
 
@@ -4385,6 +4390,7 @@ END INTERFACE
          xdotar(m) = xdot
          ydotar(m) = ydot
       enddo
+      !$OMP END PARALLEL DO
 
       do m = 1, mme
          i = iar(m)
@@ -4395,7 +4401,7 @@ END INTERFACE
          wght2 = wght2ar(m)
          xdot = xdotar(m)
          ydot = ydotar(m)
-         
+
          myupex(i,j,k)      =myupex(i,j,k) + wght1*w000(m)*xdot
          myupex(i+1,j,k)    =myupex(i+1,j,k) + wght1*w100(m)*xdot
          myupex(i,j+1,k)    =myupex(i,j+1,k) + wght1*w010(m)*xdot
@@ -4422,7 +4428,7 @@ END INTERFACE
          myupazd(i+1,j,k+1)  =myupazd(i+1,j,k+1) + wght2*w101(m)
          myupazd(i,j+1,k+1)  =myupazd(i,j+1,k+1) + wght2*w011(m)
          myupazd(i+1,j+1,k+1)=myupazd(i+1,j+1,k+1) + wght2*w111(m)
-         
+
          mydnedt(i,j,k)      =mydnedt(i,j,k) + wght0*w000(m)
          mydnedt(i+1,j,k)    =mydnedt(i+1,j,k) + wght0*w100(m)
          mydnedt(i,j+1,k)    =mydnedt(i,j+1,k) + wght0*w010(m)
@@ -4431,7 +4437,9 @@ END INTERFACE
          mydnedt(i+1,j,k+1)  =mydnedt(i+1,j,k+1) + wght0*w101(m)
          mydnedt(i,j+1,k+1)  =mydnedt(i,j+1,k+1) + wght0*w011(m)
          mydnedt(i+1,j+1,k+1)=mydnedt(i+1,j+1,k+1) + wght0*w111(m)
+
       end do
+
       
 !   enforce periodicity
       call enforce(myupex(:,:,:))
@@ -4902,11 +4910,13 @@ subroutine field(n,ip)
 !        call MPI_BARRIER(MPI_COMM_WORLD,ierr)        
 end subroutine field
 !ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-subroutine push_wrapper(n,ip)
+subroutine push_wrapper(n,ip, profint)
          use gem_com
          use equil
 	implicit none
 	integer :: n,i,j,k,ip,ns
+        integer :: profint
+        real(8) :: proftime
 
         do ns = 1,nsm
             if(ip.eq.1.and.ision==1)call ppush(n,ns)
@@ -4915,8 +4925,18 @@ subroutine push_wrapper(n,ip)
          if(ip==0)call colli(ip,n)
          if(idg.eq.1)write(*,*)'pass ppush'
 
+         proftime = MPI_WTIME()
+
          if(ip.eq.1.and.ifluid==1)call pint
          if(ip.eq.0.and.ifluid==1)call cint(n)
+
+         proftime = MPI_WTIME() - proftime
+         ! write time
+         if((profint.ne.0).and.(myid.eq.master)) then
+            if (ip.eq.1) write (*,*) 'pint time: ', proftime
+            if (ip.eq.1) write (*,*) 'cint time: ', proftime
+         end if
+
          if(idg.eq.1)write(*,*)'pass pint'
          if(ifluid==1.and.ip==0)call lorentz(ip,n)
 !         if(ifluid==1.and.ip==0)call col(dt)
