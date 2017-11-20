@@ -41,7 +41,7 @@
            if (funclog) write (*,*) " starting field"
 	   call field(timestep-1,0)
            if (funclog) write (*,*) " starting split_weight"
-	   call split_weight(timestep-1,0, 0)
+	   call split_weight(timestep-1,0, 1)
 
            if (ioenabled.ne.0) then
 	       call diagnose(timestep-1)
@@ -62,7 +62,7 @@
            if (funclog) write (*,*) " starting field"
 	   call field(timestep,1)
            if (funclog) write (*,*) " starting split_weight"
-	   call split_weight(timestep,1, 0)
+	   call split_weight(timestep,1, 1)
 
            if (funclog) write (*,*) " starting push_wrapper"
 	   call push_wrapper(timestep,0, 0)
@@ -4014,6 +4014,8 @@ END INTERFACE
       real(8) :: iar(1:mme), jar(1:mme), kar(1:mme)
       real(8) :: wght0ar(1:mme), wght1ar(1:mme), wght2ar(1:mme)
       real(8) :: xdotar(1:mme), ydotar(1:mme)
+      ! openmp domain decomp
+      integer :: myjmin, myjmax
 
       nonfi = 1 
       nonfe = 1 
@@ -4397,6 +4399,10 @@ END INTERFACE
       enddo
       !$OMP END PARALLEL DO
 
+      !$OMP PARALLEL PRIVATE(m, i, j, k, wght0, wght1, wght2, xdot, ydot, myjmin, myjmax)
+      myjmin = omp_get_thread_num() * jmx / nthreads - 1
+      myjmax = (omp_get_thread_num() + 1) * jmx / nthreads - 1
+
       do m = 1, mme
          i = iar(m)
          j = jar(m)
@@ -4406,45 +4412,50 @@ END INTERFACE
          wght2 = wght2ar(m)
          xdot = xdotar(m)
          ydot = ydotar(m)
+         if (j > myjmin .and. j <= myjmax) then
+            myupex(i,  j,  k)   = myupex(i,  j,  k) + wght1*w000(m)*xdot
+            myupex(i+1,j,  k)   = myupex(i+1,j,  k) + wght1*w100(m)*xdot
+            myupex(i,  j,  k+1) = myupex(i,  j,  k+1) + wght1*w001(m)*xdot
+            myupex(i+1,j,  k+1) = myupex(i+1,j,  k+1) + wght1*w101(m)*xdot
 
-         myupex(i,j,k)      =myupex(i,j,k) + wght1*w000(m)*xdot
-         myupex(i+1,j,k)    =myupex(i+1,j,k) + wght1*w100(m)*xdot
-         myupex(i,j+1,k)    =myupex(i,j+1,k) + wght1*w010(m)*xdot
-         myupex(i+1,j+1,k)  =myupex(i+1,j+1,k) + wght1*w110(m)*xdot
-         myupex(i,j,k+1)    =myupex(i,j,k+1) + wght1*w001(m)*xdot
-         myupex(i+1,j,k+1)  =myupex(i+1,j,k+1) + wght1*w101(m)*xdot
-         myupex(i,j+1,k+1)  =myupex(i,j+1,k+1) + wght1*w011(m)*xdot
-         myupex(i+1,j+1,k+1)=myupex(i+1,j+1,k+1) + wght1*w111(m)*xdot
+            myupey(i,  j,  k)   = myupey(i,  j,  k) + wght1*w000(m)*ydot
+            myupey(i+1,j,  k)   = myupey(i+1,j,  k) + wght1*w100(m)*ydot
+            myupey(i,  j,  k+1) = myupey(i,  j,  k+1) + wght1*w001(m)*ydot
+            myupey(i+1,j,  k+1) = myupey(i+1,j,  k+1) + wght1*w101(m)*ydot
 
-         myupey(i,j,k)      =myupey(i,j,k) + wght1*w000(m)*ydot
-         myupey(i+1,j,k)    =myupey(i+1,j,k) + wght1*w100(m)*ydot
-         myupey(i,j+1,k)    =myupey(i,j+1,k) + wght1*w010(m)*ydot
-         myupey(i+1,j+1,k)  =myupey(i+1,j+1,k) + wght1*w110(m)*ydot
-         myupey(i,j,k+1)    =myupey(i,j,k+1) + wght1*w001(m)*ydot
-         myupey(i+1,j,k+1)  =myupey(i+1,j,k+1) + wght1*w101(m)*ydot
-         myupey(i,j+1,k+1)  =myupey(i,j+1,k+1) + wght1*w011(m)*ydot
-         myupey(i+1,j+1,k+1)=myupey(i+1,j+1,k+1) + wght1*w111(m)*ydot
+            myupazd(i,  j,  k)   = myupazd(i,  j,  k) + wght2*w000(m)
+            myupazd(i+1,j,  k)   = myupazd(i+1,j,  k) + wght2*w100(m)
+            myupazd(i,  j,  k+1) = myupazd(i,  j,  k+1) + wght2*w001(m)
+            myupazd(i+1,j,  k+1) = myupazd(i+1,j,  k+1) + wght2*w101(m)
 
-         myupazd(i,j,k)      =myupazd(i,j,k) + wght2*w000(m)
-         myupazd(i+1,j,k)    =myupazd(i+1,j,k) + wght2*w100(m)
-         myupazd(i,j+1,k)    =myupazd(i,j+1,k) + wght2*w010(m)
-         myupazd(i+1,j+1,k)  =myupazd(i+1,j+1,k) + wght2*w110(m)
-         myupazd(i,j,k+1)    =myupazd(i,j,k+1) + wght2*w001(m)
-         myupazd(i+1,j,k+1)  =myupazd(i+1,j,k+1) + wght2*w101(m)
-         myupazd(i,j+1,k+1)  =myupazd(i,j+1,k+1) + wght2*w011(m)
-         myupazd(i+1,j+1,k+1)=myupazd(i+1,j+1,k+1) + wght2*w111(m)
+            mydnedt(i,  j,  k)   = mydnedt(i,  j,  k) + wght0*w000(m)
+            mydnedt(i+1,j,  k)   = mydnedt(i+1,j,  k) + wght0*w100(m)
+            mydnedt(i,  j,  k+1) = mydnedt(i,  j,  k+1) + wght0*w001(m)
+            mydnedt(i+1,j,  k+1) = mydnedt(i+1,j,  k+1) + wght0*w101(m)
+         end if
+         if (j >= myjmin .and. j < myjmax) then
+            myupex(i,  j+1,k)   = myupex(i,  j+1,k) + wght1*w010(m)*xdot
+            myupex(i+1,j+1,k)   = myupex(i+1,j+1,k) + wght1*w110(m)*xdot
+            myupex(i,  j+1,k+1) = myupex(i,  j+1,k+1) + wght1*w011(m)*xdot
+            myupex(i+1,j+1,k+1) = myupex(i+1,j+1,k+1) + wght1*w111(m)*xdot
 
-         mydnedt(i,j,k)      =mydnedt(i,j,k) + wght0*w000(m)
-         mydnedt(i+1,j,k)    =mydnedt(i+1,j,k) + wght0*w100(m)
-         mydnedt(i,j+1,k)    =mydnedt(i,j+1,k) + wght0*w010(m)
-         mydnedt(i+1,j+1,k)  =mydnedt(i+1,j+1,k) + wght0*w110(m)
-         mydnedt(i,j,k+1)    =mydnedt(i,j,k+1) + wght0*w001(m)
-         mydnedt(i+1,j,k+1)  =mydnedt(i+1,j,k+1) + wght0*w101(m)
-         mydnedt(i,j+1,k+1)  =mydnedt(i,j+1,k+1) + wght0*w011(m)
-         mydnedt(i+1,j+1,k+1)=mydnedt(i+1,j+1,k+1) + wght0*w111(m)
+            myupey(i,  j+1,k)   = myupey(i,  j+1,k) + wght1*w010(m)*ydot
+            myupey(i+1,j+1,k)   = myupey(i+1,j+1,k) + wght1*w110(m)*ydot
+            myupey(i,  j+1,k+1) = myupey(i,  j+1,k+1) + wght1*w011(m)*ydot
+            myupey(i+1,j+1,k+1) = myupey(i+1,j+1,k+1) + wght1*w111(m)*ydot
 
+            myupazd(i,  j+1,k)   = myupazd(i,  j+1,k) + wght2*w010(m)
+            myupazd(i+1,j+1,k)   = myupazd(i+1,j+1,k) + wght2*w110(m)
+            myupazd(i,  j+1,k+1) = myupazd(i,  j+1,k+1) + wght2*w011(m)
+            myupazd(i+1,j+1,k+1) = myupazd(i+1,j+1,k+1) + wght2*w111(m)
+
+            mydnedt(i,  j+1,k)   = mydnedt(i,  j+1,k) + wght0*w010(m)
+            mydnedt(i+1,j+1,k)   = mydnedt(i+1,j+1,k) + wght0*w110(m)
+            mydnedt(i,  j+1,k+1) = mydnedt(i,  j+1,k+1) + wght0*w011(m)
+            mydnedt(i+1,j+1,k+1) = mydnedt(i+1,j+1,k+1) + wght0*w111(m)
+         end if
       end do
-
+      !$OMP END PARALLEL
       
 !   enforce periodicity
       call enforce(myupex(:,:,:))
@@ -5025,8 +5036,10 @@ end subroutine reporter
       REAL(8) :: rbfr(0:imx,0:jmx)
       real(8) :: myupa(0:imx,0:jmx,0:1),myupa0(0:imx,0:jmx,0:1),myden0(0:imx,0:jmx,0:1)
 
+      ! position and weights for strip mining
       real(8) :: iar(1:mme), jar(1:mme), kar(1:mme)
       real(8) :: wght1ar(1:mme), wght0ar1(1:mme), wght0ar2(1:mme), wght01, wght02
+      ! openmp domain decomp
       integer :: myjmin, myjmax
       
       REAL(8) :: dbdrp,dbdtp,grcgtp,bfldp,fp,radiusp,dydrp,qhatp,psipp,jfnp
