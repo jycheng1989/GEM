@@ -8,7 +8,7 @@
 # * rules are generalized, so to add a file, we just append it to $(SRCS)
 
 # source files
-SRCS = erf.f gem_com.f90 equil.f90 gem.f90 outd.f90 fcnt.f fft_wrapper.f
+SRCS = erf.f gem_com.f90 equil.f90 gem.f90 outd.f90 fcnt.f fft_wrapper.f regtest.f90
 
 # this next line is a bit weird; it generates object file names automatically
 # from sources (we have both .f and .f90 files, so we need to mess around a bit)
@@ -17,7 +17,7 @@ SRCS = erf.f gem_com.f90 equil.f90 gem.f90 outd.f90 fcnt.f fft_wrapper.f
 OBJS = $(addprefix $(OUTDIR)/,$(patsubst %.f90,%.o,$(patsubst %.f,%.o,$(SRCS))))
 
 # modules, their files should be compiled before some others
-MODNAMES = fft_wrapper.mod gem_com.mod equil.mod
+MODNAMES = fft_wrapper.mod gem_com.mod equil.mod regtest.mod
 MODS = $(addprefix $(OUTDIR)/,$(MODNAMES))
 
 # pputil module must be compiled first

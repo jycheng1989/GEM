@@ -7,6 +7,9 @@
 	implicit none
 	integer :: n,i,j,k,ip
  	integer,parameter :: ioenabled=0
+
+ 	logical,parameter :: verify_jpar0=.True.
+
 	call initialize
 ! use the following two lines for r-theta contour plot
         if(iCrs_Sec==1)then
@@ -22,6 +25,19 @@
         if(isft==1)then
            call ftcamp
            goto 100
+        end if
+        
+        ! verify current version of jpar0 against reference data and exit
+        if (verify_jpar0) then
+           if (myid==master) write(*,*) 'TESTING AGAINST orig-0-4-2-0'
+           call regtest_jpar0(.False., projdir//'jpar0-ref', 'orig-0-4-2-0',&
+                      0, 4, 2, 0)
+
+           if (myid==master) write(*,*) 'TESTING AGAINST orig-0-4-10-1'
+           call regtest_jpar0(.False., projdir//'jpar0-ref', 'orig-0-4-10-1',&
+                      0, 4, 10, 1)
+
+           goto 525
         end if
         
         do  timestep=ncurr,nm
@@ -54,7 +70,7 @@
            end if
 
          end do
-         if(ioenabled.ne.0) call ftcamp
+525      if(ioenabled.ne.0) call ftcamp
 	 lasttm=MPI_WTIME()
 	 tottm=lasttm-starttm
 	 if(ioenabled.ne.0) write(*,*)'ps time=',pstm,'tot time=',tottm
@@ -2795,6 +2811,7 @@ END INTERFACE
       return
       end
 !ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+! makes (depositied) grid variable periodic
       subroutine enforce(u)
       use gem_com
       use equil
@@ -4690,14 +4707,32 @@ subroutine ampere(n,ip)
         real(8) :: myrmsapa,rma(20),myavap(0:imx-1)
         real(8) :: myjaca(0:imx-1),jaca(0:imx-1)
 
+        logical :: jpar_ref = .False. ! if we're doing a reference run for jpar0
+
         if(ifluid==1.and.beta.gt.1.e-8)then
            do i = 1,iter
-              call jpar0(ip,n,i,0)
+              ! reference run
+              if (jpar_ref .and. ip == 0 .and. n == 4 .and. i == 2) then
+                 call regtest_jpar0(.True.,projdir//'jpar0-ref','orig-0-4-2-0',&
+                      ip, n, i, 0)
+                 if (myid==master) write (*,*) 'Logged jpar0 reference case 0'
+              else
+                 call jpar0(ip,n,i,0) !normal
+              end if
+
               if(idg.eq.1)write(*,*)'pass jpar0'
               if(iperi==1)call ezampL(n,ip)
               if(iperi==0)call ezamp(n,ip)
               if(idg.eq.1)write(*,*)'pass ezamp'
-              if(i==iter)call jpar0(ip,n,i,1)
+
+              ! reference run
+              if(i==iter .and. jpar_ref .and. ip == 0 .and. n == 4) then
+                 call regtest_jpar0(.True.,projdir//'jpar0-ref','orig-0-4-10-1',&
+                      ip, n, i, 1)
+                 if (myid==master) write (*,*) 'Logged jpar0 reference case 0'
+              else if (i==iter) then !normal
+                 call jpar0(ip,n,i,1)
+              end if
               myrmsapa=0.
               rma(i)=0.
               do k=0,mykm-1
@@ -4887,6 +4922,7 @@ subroutine reporter(n)
         if(idg.eq.1)write(*,*)'pass outd'
 
 end subroutine reporter
+
 !ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 
       subroutine jpar0(ip,n,it,itp)
@@ -4929,7 +4965,7 @@ end subroutine reporter
          upa00(:,:,:) = 0.
          den0apa(:,:,:) = 0.
          return
-      end if
+      endif
       do m=1,mme
          r=x3e(m)-0.5*lx+lr0
          vpar = u3e(m)
@@ -8133,3 +8169,48 @@ end subroutine reporter
 
       return
       end
+
+!!! EVERYTHING AFTER HERE IS TESTING !!!
+
+! regression testing for jpar0
+subroutine regtest_jpar0(refrun, datadir, tmpname, ip, n, it, itp)
+  use regtest
+  use gem_com
+  implicit none
+  logical :: refrun ! whether this is a reference run
+  integer :: ip, n, it, itp    !jpar0 params
+  character(len=*) :: datadir
+  character(len=*) :: tmpname
+
+  real(8),dimension(:,:,:),allocatable :: upa0_new, upa00_new, den0apa_new
+
+  integer :: i, j, k
+  real(8) :: maxdiff1, maxdiff2, maxdiff3
+  real(8),dimension(:),allocatable :: maxdiff1_ar, maxdiff2_ar, maxdiff3_ar
+
+  if (refrun) then
+     call regtest_jpar0_insave(datadir, tmpname)
+     call jpar0(ip, n, i, itp)
+     call regtest_jpar0_outsave(datadir, tmpname)
+  else
+     call regtest_jpar0_inload(datadir, tmpname)
+     call jpar0(ip, n, i, itp)
+
+     ! copy output to new array, as outload will overwrite them
+     allocate(upa0_new(0:nxpp,0:jmx,0:1))
+     allocate(upa00_new(0:nxpp,0:jmx,0:1))
+     allocate(den0apa_new(0:nxpp,0:jmx,0:1))
+     upa0_new = upa0
+     upa00_new = upa00
+     den0apa_new = den0apa
+
+     call regtest_jpar0_outload(datadir, tmpname)
+
+     ! print largest differences between old and new arrays
+     call print_arraydiff_3(.False., 'upa0', upa0, upa0_new)
+     call print_arraydiff_3(.False., 'upa00', upa00, upa00_new)
+     call print_arraydiff_3(.False., 'den0apa', den0apa, den0apa_new)
+
+     deallocate(upa0_new, upa00_new, den0apa_new)
+  end if
+end subroutine regtest_jpar0
