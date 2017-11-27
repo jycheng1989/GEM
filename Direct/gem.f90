@@ -4,10 +4,17 @@
          use gem_com
          use equil
          use fft_wrapper
+         use regtest
 	implicit none
 	integer :: n,i,j,k,ip
+
  	integer,parameter :: ioenabled=0
 	integer :: funclog
+
+ 	logical,parameter :: ioenabled=.False.
+ 	logical,parameter :: verify_jpar0=.True.
+ 	logical,parameter :: verify_jie=.False.
+
 	call initialize
 ! use the following two lines for r-theta contour plot
         if(iCrs_Sec==1)then
@@ -27,6 +34,24 @@
         
         funclog = 0.and.(myid.eq.master)
 
+        if (verify_jpar0) then
+           ! verify current version of jpar0 against reference data and exit
+           if (myid==master) write(*,*) 'TESTING jpar0 AGAINST orig-0-4-2-0'
+           call regtest_jpar0(.False., projdir//'jpar0-ref', 'orig-0-4-2-0',&
+                      0, 4, 2, 0)
+
+           if (myid==master) write(*,*) 'TESTING jpar0 AGAINST orig-0-4-10-1'
+           call regtest_jpar0(.False., projdir//'jpar0-ref', 'orig-0-4-10-1',&
+                      0, 4, 10, 1)
+        end if
+        if (verify_jie) then
+           ! verify current version of jie against reference data and exit
+           if (myid==master) write(*,*) 'TESTING jie AGAINST orig-0-4'
+           call regtest_jie(.False., projdir//'jie-ref' ,'orig-0-4', 0, 4)
+        end if
+
+        if (verify_jpar0 .or. verify_jie) goto 525
+
         do  timestep=ncurr,nm
            tcurr = tcurr+dt
 
@@ -41,9 +66,9 @@
            if (funclog) write (*,*) " starting field"
 	   call field(timestep-1,0)
            if (funclog) write (*,*) " starting split_weight"
-	   call split_weight(timestep-1,0, 1)
+	   call split_weight(timestep-1,0, 0)
 
-           if (ioenabled.ne.0) then
+           if (ioenabled) then
 	       call diagnose(timestep-1)
                call reporter(timestep-1)
             else
@@ -62,25 +87,26 @@
            if (funclog) write (*,*) " starting field"
 	   call field(timestep,1)
            if (funclog) write (*,*) " starting split_weight"
-	   call split_weight(timestep,1, 1)
+	   call split_weight(timestep,1, 0)
 
            if (funclog) write (*,*) " starting push_wrapper"
 	   call push_wrapper(timestep,0, 0)
 
            if(mod(timestep,1000)==0)then
               do i=0,last 
-                 if(myid==i.and.ioenabled.ne.0)write(*,*)myid,mm(1),mme
+                 if(myid==i.and.ioenabled)write(*,*)myid,mm(1),mme
                  call MPI_BARRIER(MPI_COMM_WORLD,ierr)
               end do
            end if
          end do
 
-         if(ioenabled.ne.0) call ftcamp
+525      if(ioenabled) call ftcamp
+
 	 lasttm=MPI_WTIME()
 	 tottm=lasttm-starttm
-	 if(ioenabled.ne.0) write(*,*)'ps time=',pstm,'tot time=',tottm
+	 if(ioenabled) write(*,*)'ps time=',pstm,'tot time=',tottm
          do i=0,last 
-            if(myid==i.and.ioenabled.ne.0)write(*,*)myid,mm(1),mme
+            if(myid==i.and.ioenabled)write(*,*)myid,mm(1),mme
             call MPI_BARRIER(MPI_COMM_WORLD,ierr)
          end do
  100     call MPI_FINALIZE(ierr)
@@ -1629,7 +1655,7 @@ END INTERFACE
       REAL(8) :: sgnx,sgny,sz,myfe
       INTEGER :: i,i1,j,j1,k,k1,l,m,n,ifirst,nstep,ip,INFO
       INTEGER :: l1,m1,myk,myj,ix,ikx
-      INTEGER :: ioenabled
+      LOGICAL :: ioenabled
       COMPLEX(8) :: temp3dxy(0:imx-1,0:jmx-1,0:1),v(0:imx-1,0:jcnt-1,0:1)
       COMPLEX(8) :: sbuf(0:imx*jcnt*2-1),rbuf(0:imx*jmx*2-1)
       COMPLEX(8) :: sl(1:imx-1,0:jcnt-1,0:1)
@@ -1655,7 +1681,7 @@ END INTERFACE
           allocate(mx(imx-1,imx-1,0:jcnt-1,0:1),formphi(0:imx-1,0:jcnt-1,0:1))
          allocate(formfe(0:imx-1,0:jcnt-1,0:1),ipiv(imx-1,imx-1,0:jcnt-1,0:1))
 
-         if(iget.eq.1.and.ioenabled.ne.0) then
+         if(iget.eq.1.and.ioenabled) then
             open(10000+MyId,file=fname,form='unformatted',status='old')
             read(10000+MyId)mx,ipiv
             close(10000+myid)
@@ -1769,7 +1795,7 @@ END INTERFACE
             end do
          end do
 
-         if(iget.eq.0.and.ioenabled.ne.0) then
+         if(iget.eq.0.and.ioenabled) then
             open(10000+MyId,file=fname,form='unformatted',status='unknown')
             write(10000+MyId)mx,ipiv
             close(10000+myid)
@@ -2107,7 +2133,7 @@ END INTERFACE
       REAL(8),dimension(:,:,:),allocatable :: formapa
       REAL(8) :: sgnx,sgny,sz,myfe
       integer,dimension(:,:,:,:),allocatable :: ipiv
-      INTEGER :: ioenabled
+      LOGICAL :: ioenabled
       INTEGER :: i,i1,j,j1,k,k1,l,m,n,ifirst,nstep,ip,INFO
       INTEGER :: l1,m1,myk,myj,ix,ikx,iext
       COMPLEX(8) :: temp3dxy(0:imx-1,0:jmx-1,0:1),v(0:imx-1,0:jcnt-1,0:1)
@@ -2128,7 +2154,7 @@ END INTERFACE
          allocate(nab2(0:imx-1,0:jcnt-1,0:imx-1,0:1),ipiv(imx-1,imx-1,0:jcnt-1,0:1))
          allocate(mx(imx-1,imx-1,0:jcnt-1,0:1),formapa(0:imx-1,0:jcnt-1,0:1))
 
-         if(iget.eq.1.and.ioenabled.ne.0) then
+         if(iget.eq.1.and.ioenabled) then
             open(20000+MyId,file=fname,form='unformatted',status='old')
             read(20000+MyId)mx,ipiv
             close(20000+myid)
@@ -2233,7 +2259,7 @@ END INTERFACE
             end do
          end do
 
-         if(iget.eq.0.and.ioenabled.ne.0) then
+         if(iget.eq.0.and.ioenabled) then
             open(20000+MyId,file=fname,form='unformatted',status='unknown')
             write(20000+MyId)mx,ipiv
             close(20000+myid)
@@ -2818,6 +2844,7 @@ END INTERFACE
       return
       end
 !ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+! makes (depositied) grid variable periodic
       subroutine enforce(u)
       use gem_com
       use equil
@@ -3761,7 +3788,7 @@ END INTERFACE
       integer,dimension(:,:,:,:),allocatable :: ipiv
       REAL(8),dimension(:,:,:),allocatable :: formdpt
       REAL(8) :: sgnx,sgny,sz,myfe,u(0:imx,0:jmx,0:1)
-      INTEGER :: ioenabled
+      LOGICAL :: ioenabled
       INTEGER :: i,i1,j,j1,k,k1,l,m,n,ifirst,nstep,ip,INFO
       INTEGER :: l1,m1,myk,myj,ix,ikx
       COMPLEX(8) :: temp3dxy(0:imx-1,0:jmx-1,0:1),v(0:imx-1,0:jcnt-1,0:1)
@@ -3787,7 +3814,7 @@ END INTERFACE
          allocate(mx(imx-1,imx-1,0:jcnt-1,0:1),formdpt(0:imx-1,0:jcnt-1,0:1))
          allocate(ipiv(imx-1,imx-1,0:jcnt-1,0:1))
 
-         if(iget.eq.1.and.ioenabled.ne.0) then
+         if(iget.eq.1.and.ioenabled) then
             open(30000+MyId,file=fname,form='unformatted',status='old')
             read(30000+MyId)mx,ipiv
             close(30000+myid)
@@ -3898,7 +3925,7 @@ END INTERFACE
             end do
          end do
 
-         if(iget.eq.0.and.ioenabled.ne.0) then
+         if(iget.eq.0.and.ioenabled) then
             open(30000+MyId,file=fname,form='unformatted',status='unknown')
             write(30000+MyId)mx,ipiv
             close(30000+myid)
@@ -4756,6 +4783,7 @@ end subroutine poisson
 subroutine ampere(n,ip, profjpar)
          use gem_com
          use equil
+         use regtest
 	implicit none
         integer :: iter=10
 	integer :: n,i,i1,j,k,ip
@@ -4764,9 +4792,17 @@ subroutine ampere(n,ip, profjpar)
         real(8) :: myrmsapa,rma(20),myavap(0:imx-1)
         real(8) :: myjaca(0:imx-1),jaca(0:imx-1)
 
+        logical :: jpar_ref = .False. ! if we're doing a reference run for jpar0
+
         if(ifluid==1.and.beta.gt.1.e-8)then
            do i = 1,iter
-              call jpar0(ip,n,i,0)
+              ! reference run
+              if (jpar_ref .and. ip == 0 .and. n == 4 .and. i == 2) then
+                 call regtest_jpar0(.True.,projdir//'jpar0-ref','orig-0-4-2-0',&
+                      ip, n, i, 0)
+                 if (myid==master) write (*,*) 'Logged jpar0 reference case 0'
+              else
+                 call jpar0(ip,n,i,0) !normal
 
               ! profiling
               if (profjpar == 1) then
@@ -4783,13 +4819,22 @@ subroutine ampere(n,ip, profjpar)
                  if (myid.eq.master) then
                     write (*,*) '50 iterations of jpar0: ', proftime
                  end if
+
               end if
 
               if(idg.eq.1)write(*,*)'pass jpar0'
               if(iperi==1)call ezampL(n,ip)
               if(iperi==0)call ezamp(n,ip)
               if(idg.eq.1)write(*,*)'pass ezamp'
-              if(i==iter)call jpar0(ip,n,i,1)
+
+              ! reference run
+              if(i==iter .and. jpar_ref .and. ip == 0 .and. n == 4) then
+                 call regtest_jpar0(.True.,projdir//'jpar0-ref','orig-0-4-10-1',&
+                      ip, n, i, 1)
+                 if (myid==master) write (*,*) 'Logged jpar0 reference case 0'
+              else if (i==iter) then !normal
+                 call jpar0(ip,n,i,1)
+              end if
               myrmsapa=0.
               rma(i)=0.
               do k=0,mykm-1
@@ -4882,9 +4927,12 @@ subroutine split_weight(n,ip, profjie)
   real(8) :: proftime
 
   if(isg.gt.0..and.ifluid.eq.1)then
-
-     ! profiling
-     if (profjie) then
+     if (jie_ref .and. n == 4 .and. ip == 0) then
+        !regression testing
+        call regtest_jie(.True., projdir//'jie-ref' ,'orig-0-4', ip, n)
+        if (myid==master) write (*,*) 'Logged jie reference case'
+     else if (profjie) then
+        ! profiling
         call MPI_BARRIER(MPI_COMM_WORLD,ierr)
         proftime = MPI_WTIME()
 
@@ -4900,6 +4948,7 @@ subroutine split_weight(n,ip, profjie)
            write (*,*) 'time for 50 iterations of jie: ', proftime
         end if
      else
+        ! default case
         call jie(ip,n)
      end if
 
@@ -4912,6 +4961,34 @@ subroutine split_weight(n,ip, profjie)
   end if
   if(idg.eq.1)write(*,*)'pass split_weight'
   !        call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+subroutine split_weight(n,ip)
+  use gem_com
+  use equil
+  use regtest
+  implicit none
+
+  Integer :: n,i,j,k,ip
+  logical :: jie_ref = .False. ! whether we're doing a reference test for jie
+
+  if(isg.gt.0..and.ifluid.eq.1)then
+     ! regression testing
+     if (jie_ref .and. n == 4 .and. ip == 0) then
+        call regtest_jie(.True., projdir//'jie-ref' ,'orig-0-4', ip, n)
+        if (myid==master) write (*,*) 'Logged jie reference case'
+     else
+        call jie(ip,n)
+     end if
+
+     if(idg.eq.1)write(*,*)'pass jie'
+     call drdt(ip)
+     if(idg.eq.1)write(*,*)'pass drdt'
+     if(iperi==1)call dpdtL(ip)
+     if(iperi==0)call dpdt(ip)
+     if(idg.eq.1)write(*,*)'pass dpdt'
+  end if
+  if(idg.eq.1)write(*,*)'pass split_weight'
+!        call MPI_BARRIER(MPI_COMM_WORLD,ierr)        
+
 end subroutine split_weight
 !ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 subroutine field(n,ip)
@@ -5014,6 +5091,7 @@ subroutine reporter(n)
         if(idg.eq.1)write(*,*)'pass outd'
 
 end subroutine reporter
+
 !ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 
       subroutine jpar0(ip,n,it,itp)
