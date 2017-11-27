@@ -12,6 +12,10 @@ localVars = set()
 globalVars = set()
 subNames = set()
 
+# fortran builtins
+# this is incomplete and needs to be updated
+stopwords = set(['cos', 'exp', 'float', 'int', 'max', 'min', 'sin', 'sqrt'])
+
 # open file or stdin
 if len(sys.argv) > 1:
 	try:
@@ -141,7 +145,7 @@ print('----SUBROUTINES----')
 for v in subNames: print(v)
 print()
 print('----LOCAL VARIABLES----')
-for v in localVars: print(v)
+for v in localVars - stopwords: print(v)
 print()
 print('----GLOBAL VARIABLES----')
-for v in globalVars: print(v)
+for v in globalVars - stopwords: print(v)
