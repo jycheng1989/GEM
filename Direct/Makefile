@@ -18,7 +18,7 @@ OBJS = $(addprefix $(OUTDIR)/,$(patsubst %.f90,%.o,$(patsubst %.f,%.o,$(SRCS))))
 
 # modules, their files should be compiled before some others
 MODNAMES = fft_wrapper.mod gem_com.mod equil.mod regtest.mod
-MODS = $(addprefix $(OUTDIR)/,$(MODNAMES))
+MODS = $(addprefix $(OUTDIR)/modules/,$(MODNAMES))
 
 # pputil module must be compiled first
 PLIB = $(OUTDIR)/pputil.o
@@ -110,7 +110,7 @@ $(OUTDIR)/%.o: %.f90
 $(OUTDIR)/%.o: %.f
 	$(F90) -c $(OPT) $(MODOPT) -o $@ $<
 
-$(OUTDIR)/%.mod: $(OUTDIR)/%.o;
+$(OUTDIR)/modules/%.mod: $(OUTDIR)/%.o;
 
 
 # file-specific compilation options/dependencies can go down here:

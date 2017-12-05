@@ -10,8 +10,9 @@ contains
     integer :: ldims(3), udims(3), maxijk(3)
     integer :: i, j, k
 
-    real(8) :: diff, maxdiff
-    real(8) :: maxdiff_ar(0:numprocs-1)
+    real(8) :: diff, maxdiff, value1, value2
+    real(8) :: value1_ar(0:numprocs-1)
+    real(8) :: value2_ar(0:numprocs-1)
     integer :: maxijk_ar(0:3*numprocs-1)
 
     ! only use overlapping array parts
@@ -28,6 +29,8 @@ contains
           do k = ldims(3), udims(3)
              diff = abs(ar1(i,j,k) - ar2(i,j,k))
              if (diff > maxdiff) then
+                value1 = ar1(i,j,k)
+                value2 = ar2(i,j,k)
                 maxdiff = diff
                 maxijk = [i,j,k]
              end if
@@ -36,17 +39,20 @@ contains
     end do
 
     ! master thread gathers data
-    call MPI_GATHER(maxdiff, 1, MPI_REAL8, maxdiff_ar, 1, MPI_REAL8,&
+    call MPI_GATHER(value1, 1, MPI_REAL8, value1_ar, 1, MPI_REAL8,&
+         master, MPI_COMM_WORLD, ierr)
+    call MPI_GATHER(value2, 1, MPI_REAL8, value2_ar, 1, MPI_REAL8,&
          master, MPI_COMM_WORLD, ierr)
     call MPI_GATHER(maxijk, 3, MPI_INTEGER, maxijk_ar, 3, MPI_INTEGER,&
          master, MPI_COMM_WORLD, ierr)
 
     ! master thread prints data
-    ! <varname> max diff (<id>): <value> at <i>,<j>,<k>
+    ! <varname> max diff (<id>): <diff> (<value1> vs <value2>) at <i>,<j>,<k>
     if (myid == master) then
        ! find largest error overall
        do i = 0, numprocs - 1
-          if (maxdiff_ar(i) > maxdiff) maxdiff = maxdiff_ar(i)
+          diff = abs(value1_ar(i) - value2_ar(i))
+          if (diff > maxdiff) maxdiff = diff
        end do
 
        if (maxdiff == 0) write (*,'(A,A)') arname, ': no discrepancies found'
@@ -54,11 +60,14 @@ contains
        do i = 0, numprocs - 1
           ! if verbose flag is set, print all
           ! else, print largest and all those within 5%
-          if (verbose .or. maxdiff_ar(i) / maxdiff .ge. 0.95) then
+          diff = abs(value1_ar(i) - value2_ar(i))
+          if (verbose .or. diff / maxdiff .ge. 0.95) then
              write (*,'(A,A,I0.4)',advance='no') arname, ' max diff (', i
-             write (*,'(A,ES12.5,A)',advance='no') '): ', maxdiff_ar(i), ' at '
-             write (*,'(I0,A,I0)',advance='no') maxijk_ar(3*i), ',', maxijk_ar(3*i+1)
-             write (*,'(A,I0)') ',', maxijk_ar(3*i+2)
+             write (*,'(A,ES12.5,A)',advance='no') '): ', diff, ' ('
+             write (*,'(ES12.5,A)',advance='no') value1_ar(i), ' vs '
+             write (*,'(ES12.5,A)',advance='no') value2_ar(i), ') at '
+             write (*,'(I0,A)',advance='no') maxijk_ar(3*i), ','
+             write (*,'(I0,A,I0)') maxijk_ar(3*i+1), ',', maxijk_ar(3*i+2)
           end if
        end do
     end if

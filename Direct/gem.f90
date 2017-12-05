@@ -8,7 +8,6 @@
 	implicit none
 	integer :: n,i,j,k,ip
 
- 	integer,parameter :: ioenabled=0
 	integer :: funclog
 
  	logical,parameter :: ioenabled=.False.
@@ -50,6 +49,7 @@
            call regtest_jie(.False., projdir//'jie-ref' ,'orig-0-4', 0, 4)
         end if
 
+        ! if we're verifying anything, we exit instead of running the main loop
         if (verify_jpar0 .or. verify_jie) goto 525
 
         do  timestep=ncurr,nm
@@ -4803,7 +4803,7 @@ subroutine ampere(n,ip, profjpar)
                  if (myid==master) write (*,*) 'Logged jpar0 reference case 0'
               else
                  call jpar0(ip,n,i,0) !normal
-
+              end if
               ! profiling
               if (profjpar == 1) then
                  call MPI_BARRIER(MPI_COMM_WORLD, ierr)
@@ -4920,11 +4920,14 @@ end subroutine ampere
 subroutine split_weight(n,ip, profjie)
   use gem_com
   use equil
+  use regtest
   implicit none
   
   integer :: n,i,j,k,ip
   integer :: itr,profjie
   real(8) :: proftime
+
+  logical :: jie_ref = .False. ! whether we're doing a reference test for jie
 
   if(isg.gt.0..and.ifluid.eq.1)then
      if (jie_ref .and. n == 4 .and. ip == 0) then
@@ -4961,34 +4964,6 @@ subroutine split_weight(n,ip, profjie)
   end if
   if(idg.eq.1)write(*,*)'pass split_weight'
   !        call MPI_BARRIER(MPI_COMM_WORLD,ierr)
-subroutine split_weight(n,ip)
-  use gem_com
-  use equil
-  use regtest
-  implicit none
-
-  Integer :: n,i,j,k,ip
-  logical :: jie_ref = .False. ! whether we're doing a reference test for jie
-
-  if(isg.gt.0..and.ifluid.eq.1)then
-     ! regression testing
-     if (jie_ref .and. n == 4 .and. ip == 0) then
-        call regtest_jie(.True., projdir//'jie-ref' ,'orig-0-4', ip, n)
-        if (myid==master) write (*,*) 'Logged jie reference case'
-     else
-        call jie(ip,n)
-     end if
-
-     if(idg.eq.1)write(*,*)'pass jie'
-     call drdt(ip)
-     if(idg.eq.1)write(*,*)'pass drdt'
-     if(iperi==1)call dpdtL(ip)
-     if(iperi==0)call dpdt(ip)
-     if(idg.eq.1)write(*,*)'pass dpdt'
-  end if
-  if(idg.eq.1)write(*,*)'pass split_weight'
-!        call MPI_BARRIER(MPI_COMM_WORLD,ierr)        
-
 end subroutine split_weight
 !ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 subroutine field(n,ip)
@@ -5118,7 +5093,7 @@ end subroutine reporter
       real(8) :: iar(1:mme), jar(1:mme), kar(1:mme)
       real(8) :: wght1ar(1:mme), wght0ar1(1:mme), wght0ar2(1:mme), wght01, wght02
       ! openmp domain decomp
-      integer :: myjmin, myjmax
+      integer :: mythread, myjmin, myjmax
       
       REAL(8) :: dbdrp,dbdtp,grcgtp,bfldp,fp,radiusp,dydrp,qhatp,psipp,jfnp
       REAL(8) :: grp,gxdgyp
@@ -5146,7 +5121,7 @@ end subroutine reporter
       end if
 
       !$OMP PARALLEL DO PRIVATE(i,j,k,r,vpar,wx0,wx1,wz0,wz1,th,ter,xnp,b,vfac)&
-      !$OMP& PRIVATE(grcgtp,radiusp,bfldp,dbdrp,psipp,fp,enerb,zdot,dv,wght0,wght1)&
+      !$OMP& PRIVATE(grcgtp,radiusp,bfldp,dbdrp,jfnp,psipp,fp,enerb,zdot,dv,wght0,wght1)&
       !$OMP& PRIVATE(xt,yt,zt,aparp)
       do m=1,mme
          r=x3e(m)-0.5*lx+lr0
@@ -5211,6 +5186,10 @@ end subroutine reporter
              + w011(m)*apar(i,j+1,k+1) &
              + w111(m)*apar(i+1,j+1,k+1)
 
+         iar(m) = i
+         jar(m) = j
+         kar(m) = k
+
          if(itp==0)then
             wght1ar(m) = wght1*aparp*vpar*vpar/amie/ter*xnp
          end if
@@ -5224,9 +5203,15 @@ end subroutine reporter
       enddo
       !$OMP END PARALLEL DO
 
-      !$OMP PARALLEL PRIVATE(m, i, j, k, wght1, myjmin, myjmax)
-      myjmin = omp_get_thread_num() * jmx / nthreads - 1
-      myjmax = (omp_get_thread_num() + 1) * jmx / nthreads - 1
+      !$OMP PARALLEL PRIVATE(m, i, j, k, wght1, wght01, wght02, mythread, myjmin, myjmax)
+      mythread = omp_get_thread_num()
+
+      ! particles will be distributed in interval (myjmin, myjmax]
+      myjmin = mythread * jmx / nthreads
+      myjmax = (mythread + 1) * jmx / nthreads
+
+      ! first thread should distribute on 0
+      if (mythread == 0) myjmin = -1
 
       if (itp == 0) then
          do m=1, mme
