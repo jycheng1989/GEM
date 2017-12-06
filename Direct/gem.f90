@@ -11,7 +11,7 @@
 	integer :: funclog
 
  	logical,parameter :: ioenabled=.False.
- 	logical,parameter :: verify_jpar0=.True.
+ 	logical,parameter :: verify_jpar0=.False.
  	logical,parameter :: verify_jie=.False.
 
 	call initialize
@@ -66,7 +66,7 @@
            if (funclog) write (*,*) " starting field"
 	   call field(timestep-1,0)
            if (funclog) write (*,*) " starting split_weight"
-	   call split_weight(timestep-1,0, 0)
+	   call split_weight(timestep-1,0, 1)
 
            if (ioenabled) then
 	       call diagnose(timestep-1)
@@ -87,7 +87,7 @@
            if (funclog) write (*,*) " starting field"
 	   call field(timestep,1)
            if (funclog) write (*,*) " starting split_weight"
-	   call split_weight(timestep,1, 0)
+	   call split_weight(timestep,1, 1)
 
            if (funclog) write (*,*) " starting push_wrapper"
 	   call push_wrapper(timestep,0, 0)
@@ -4042,7 +4042,7 @@ END INTERFACE
       real(8) :: wght0ar(1:mme), wght1ar(1:mme), wght2ar(1:mme)
       real(8) :: xdotar(1:mme), ydotar(1:mme)
       ! openmp domain decomp
-      integer :: myjmin, myjmax
+      integer :: mythread, myjmin, myjmax
 
       nonfi = 1 
       nonfe = 1 
@@ -4426,9 +4426,16 @@ END INTERFACE
       enddo
       !$OMP END PARALLEL DO
 
-      !$OMP PARALLEL PRIVATE(m, i, j, k, wght0, wght1, wght2, xdot, ydot, myjmin, myjmax)
-      myjmin = omp_get_thread_num() * jmx / nthreads - 1
-      myjmax = (omp_get_thread_num() + 1) * jmx / nthreads - 1
+      !$OMP PARALLEL PRIVATE(m, i, j, k, wght0, wght1, wght2, xdot, ydot)&
+      !$OMP& PRIVATE(mythread, myjmin, myjmax)
+      mythread = omp_get_thread_num()
+
+      ! particles will be distributed in interval (myjmin, myjmax]
+      myjmin = mythread * jmx / nthreads
+      myjmax = (mythread + 1) * jmx / nthreads
+
+      ! first thread should distribute on 0
+      if (mythread == 0) myjmin = -1
 
       do m = 1, mme
          i = iar(m)
