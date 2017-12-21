@@ -31,7 +31,7 @@
            goto 100
         end if
         
-        funclog = 0.and.(myid.eq.master)
+        funclog = 1.and.(myid.eq.master)
 
         if (verify_jpar0) then
            ! verify current version of jpar0 against reference data and exit
@@ -60,13 +60,13 @@
            if (funclog) write (*,*) " starting accumulate"
            call accumulate(timestep-1,0)
            if (funclog) write (*,*) " starting ampere"
-	   call ampere(timestep-1,0, 1)
+	   call ampere(timestep-1,0)
            if (funclog) write (*,*) " starting poisson"
 	   call poisson(timestep-1,0)
            if (funclog) write (*,*) " starting field"
 	   call field(timestep-1,0)
            if (funclog) write (*,*) " starting split_weight"
-	   call split_weight(timestep-1,0, 1)
+	   call split_weight(timestep-1,0)
 
            if (ioenabled) then
 	       call diagnose(timestep-1)
@@ -81,16 +81,16 @@
            if (funclog) write (*,*) " starting accumulate"
 	   call accumulate(timestep,1)
            if (funclog) write (*,*) " starting ampere"
-	   call ampere(timestep,1, 1)
+	   call ampere(timestep,1)
            if (funclog) write (*,*) " starting poisson"
 	   call poisson(timestep,1)
            if (funclog) write (*,*) " starting field"
 	   call field(timestep,1)
            if (funclog) write (*,*) " starting split_weight"
-	   call split_weight(timestep,1, 1)
+	   call split_weight(timestep,1)
 
            if (funclog) write (*,*) " starting push_wrapper"
-	   call push_wrapper(timestep,0, 0)
+	   call push_wrapper(timestep,0)
 
            if(mod(timestep,1000)==0)then
               do i=0,last 
@@ -4038,11 +4038,22 @@ END INTERFACE
       REAL(8) :: grp,gxdgyp,rhox(4),rhoy(4),vncp,vparspp
 
       ! position and weights for each particle (for loop strip-mining)
+      ! first loop: we're doing 1/2/4 point averaging for each species
+      real(8) :: iarl(lr(1),maxval(mm))
+      real(8) :: jarl(lr(1),maxval(mm))
+      real(8) :: karl(lr(1),maxval(mm))
+      ! second loop: all particles
       real(8) :: iar(1:mme), jar(1:mme), kar(1:mme)
+      ! weight and [xyz]dot can be used in both (everything in mm is < mme)
       real(8) :: wght0ar(1:mme), wght1ar(1:mme), wght2ar(1:mme)
-      real(8) :: xdotar(1:mme), ydotar(1:mme)
+      real(8) :: xdotar(1:mme), ydotar(1:mme), zdotar(1:mme)
+
       ! openmp domain decomp
       integer :: mythread, myjmin, myjmax
+
+      real(8) :: time1, time2
+
+      if (myid == master) time1 = MPI_WTIME()
 
       nonfi = 1 
       nonfe = 1 
@@ -4060,6 +4071,22 @@ END INTERFACE
       myjpex = 0.
       myjpey = 0.
       mydnidt = 0.
+
+      ! 0.00034
+      if (myid == master) then
+         time2 = MPI_WTIME()
+         write (*,'(I0,A,I0)'), mm(ns), ',', mme
+         write (*,'(A)',advance='no') '   01 '
+         write (*,*) time2 - time1
+         time1 = MPI_WTIME()
+      end if
+
+      !$OMP PARALLEL DO PRIVATE(dv,i,j,k,l,r,th,cost,sint,wx0,wx1,wz0,wz1)&
+      !$OMP& PRIVATE(dbdrp,dbdtp,grcgtp,bfldp,radiusp,dydrp,qhatp,grp,gxdgyp)&
+      !$OMP& PRIVATE(curvbzp,bdcrvbp,grdgtp,fp,jfnp,psipp,ter,kaptp,kapnp,xnp)&
+      !$OMP& PRIVATE(vncp,vparspp,psip2p,dipdrp,b,rhog,vfac,vp0,vpar,kap)&
+      !$OMP& PRIVATE(rhox,rhoy,exp1,eyp,delbxp,delbyp,aparp,xs,xt,yt,bstar,enerb)&
+      !$OMP& PRIVATE(dum1,vxdum,xdot,ydot,zdot,wght,wght0,wght1)
       do m=1,mm(ns)
          dv=float(lr(ns))*(dx*dy*dz)
 
@@ -4190,6 +4217,13 @@ END INTERFACE
                  -dipdrp/radiusp*mims(ns)*vpar**2/(q(ns)*bstar*b)*q0*br0*grcgtp/jfnp
 
 !    now do 1,2,4 point average, where lr is the no. of points...
+         wght1 = wght0*(vxdum*kap+q(ns)*(xdot*exp1/ter+(ydot-vp0)*eyp/ter))*xnp
+
+         wght0ar(m) = wght
+         wght1ar(m) = wght1
+         xdotar(m) = xdot
+         ydotar(m) = ydot
+         zdotar(m) = zdot
          do 200 l=1,lr(1)
             xs=x3(ns,m)+rhox(l) !rwx(1,l)*rhog
             yt=y3(ns,m)+rhoy(l) !(rwy(1,l)+sz*rwx(1,l))*rhog
@@ -4202,13 +4236,38 @@ END INTERFACE
             j=int(yt/dy+0.5)
             k=int(z3(ns,m)/dz+0.5)-gclr*kcnt
 
-            wght1 = wght0*(vxdum*kap+q(ns)*(xdot*exp1/ter+(ydot-vp0)*eyp/ter))*xnp
+            iarl(l, m) = i
+            jarl(l, m) = j
+            karl(l, m) = k
+ 200     continue
+      enddo
+      !$OMP END PARALLEL DO
+
+      do m=1,mm(ns)
+         wght = wght0ar(m)
+         wght1 = wght1ar(m)
+         xdot = xdotar(m)
+         ydot = ydotar(m)
+         zdot = zdotar(m)
+         
+         do l=1,lr(1)
+            i = iarl(l, m)
+            j = jarl(l, m)
+            k = karl(l, m)
             myjpar(i,j,k) = myjpar(i,j,k)+wght*zdot
             myjpex(i,j,k) = myjpex(i,j,k)+wght*xdot
             myjpey(i,j,k) = myjpey(i,j,k)+wght*ydot
             mydnidt(i,j,k) = mydnidt(i,j,k)+wght1
- 200     continue
-      enddo
+         end do
+      end do
+
+      ! 0.100
+      if (myid == master) then
+         time2 = MPI_WTIME()
+         write (*,'(A)',advance='no') '   02 '
+         write (*,*) time2 - time1
+         time1 = MPI_WTIME()
+      end if
 
 !   enforce periodicity
       call enforce(myjpar)
@@ -4217,6 +4276,14 @@ END INTERFACE
       call enforce(mydnidt)
 !      call filter(myjpar)
 !      call filter(mydnidt)
+
+      ! 0.0023
+      if (myid == master) then
+         time2 = MPI_WTIME()
+         write (*,'(A)',advance='no') '   03 '
+         write (*,*) time2 - time1
+         time1 = MPI_WTIME()
+      end if
 
       do 410 i=0,im
          do 420 j=0,jm
@@ -4250,6 +4317,14 @@ END INTERFACE
       myupey = 0.
       myupazd = 0.
       mydnedt = 0.
+
+      ! 0.0014
+      if (myid == master) then
+         time2 = MPI_WTIME()
+         write (*,'(A)',advance='no') '   04 '
+         write (*,*) time2 - time1
+         time1 = MPI_WTIME()
+      end if
 
       !$OMP PARALLEL DO PRIVATE(i,j,k,dv,r,wx0,wx1,wz0,wz1,th,cost,sint,dbdrp,dbdtp)&
       !$OMP& PRIVATE(grcgtp,bfldp,radiusp,dydrp,qhatp,grp,gxdgyp,curvbzp,bdcrvbp,grdgtp)&
@@ -4426,6 +4501,14 @@ END INTERFACE
       enddo
       !$OMP END PARALLEL DO
 
+      ! 0.10
+      if (myid == master) then
+         time2 = MPI_WTIME()
+         write (*,'(A)',advance='no') '   05 '
+         write (*,*) time2 - time1
+         time1 = MPI_WTIME()
+      end if
+
       !$OMP PARALLEL PRIVATE(m, i, j, k, wght0, wght1, wght2, xdot, ydot)&
       !$OMP& PRIVATE(mythread, myjmin, myjmax)
       mythread = omp_get_thread_num()
@@ -4490,6 +4573,14 @@ END INTERFACE
          end if
       end do
       !$OMP END PARALLEL
+
+      ! 0.0024
+      if (myid == master) then
+         time2 = MPI_WTIME()
+         write (*,'(A)',advance='no') '   06 '
+         write (*,*) time2 - time1
+         time1 = MPI_WTIME()
+      end if
       
 !   enforce periodicity
       call enforce(myupex(:,:,:))
@@ -4509,6 +4600,13 @@ END INTERFACE
          end do
       end do
 
+      ! 0.0013
+      if (myid == master) then
+         time2 = MPI_WTIME()
+         write (*,'(A)',advance='no') '   07 '
+         write (*,*) time2 - time1
+         time1 = MPI_WTIME()
+      end if
 
  999  continue
       return
@@ -4787,18 +4885,19 @@ subroutine poisson(n,ip)
 !        call MPI_BARRIER(MPI_COMM_WORLD,ierr)        
 end subroutine poisson
 !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-subroutine ampere(n,ip, profjpar)
+subroutine ampere(n,ip)
          use gem_com
          use equil
          use regtest
 	implicit none
         integer :: iter=10
 	integer :: n,i,i1,j,k,ip
- 	integer :: profjpar,iprof
+ 	integer :: iprof
  	real :: proftime
         real(8) :: myrmsapa,rma(20),myavap(0:imx-1)
         real(8) :: myjaca(0:imx-1),jaca(0:imx-1)
 
+        logical :: profjpar = .False. ! if we're profiling jpar0
         logical :: jpar_ref = .False. ! if we're doing a reference run for jpar0
 
         if(ifluid==1.and.beta.gt.1.e-8)then
@@ -4812,7 +4911,7 @@ subroutine ampere(n,ip, profjpar)
                  call jpar0(ip,n,i,0) !normal
               end if
               ! profiling
-              if (profjpar == 1) then
+              if (profjpar) then
                  call MPI_BARRIER(MPI_COMM_WORLD, ierr)
                  proftime = MPI_WTIME()
 
@@ -4924,16 +5023,18 @@ subroutine ampere(n,ip, profjpar)
 !        call MPI_BARRIER(MPI_COMM_WORLD,ierr)        
 end subroutine ampere
 !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-subroutine split_weight(n,ip, profjie)
+subroutine split_weight(n,ip)
   use gem_com
   use equil
   use regtest
   implicit none
   
   integer :: n,i,j,k,ip
-  integer :: itr,profjie
+
+  integer :: itr
   real(8) :: proftime
 
+  logical :: profjie = .False. ! whether we're profiling jie
   logical :: jie_ref = .False. ! whether we're doing a reference test for jie
 
   if(isg.gt.0..and.ifluid.eq.1)then
@@ -4985,12 +5086,13 @@ subroutine field(n,ip)
 !        call MPI_BARRIER(MPI_COMM_WORLD,ierr)        
 end subroutine field
 !ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-subroutine push_wrapper(n,ip, profint)
+subroutine push_wrapper(n,ip)
          use gem_com
          use equil
 	implicit none
 	integer :: n,i,j,k,ip,ns
-        integer :: profint
+
+        logical :: profint = .False. ! if we're profiling pint and cint
         real(8) :: proftime
 
         do ns = 1,nsm
@@ -5007,9 +5109,9 @@ subroutine push_wrapper(n,ip, profint)
 
          proftime = MPI_WTIME() - proftime
          ! write time
-         if((profint.ne.0).and.(myid.eq.master)) then
+         if(profint.and.(myid.eq.master)) then
             if (ip.eq.1) write (*,*) 'pint time: ', proftime
-            if (ip.eq.1) write (*,*) 'cint time: ', proftime
+            if (ip.eq.0) write (*,*) 'cint time: ', proftime
          end if
 
          if(idg.eq.1)write(*,*)'pass pint'
