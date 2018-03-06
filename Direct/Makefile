@@ -42,49 +42,65 @@ MODOPT = -module $(OUTDIR)/modules
 
 
 # here are all the targets, this shows how easy it is to add a new set of flags
+
+# build for haswell nodes
 .PHONY: build
 build: $(OUTDIR)/gem
 
+# build for KNL nodes
 .PHONY: build-knl
 build-knl: $(OUTDIR)/gem
 build-knl: OPT = -FR -r8 -O2 -xMIC-AVX512 -qopenmp
 
+# debug build (no optimization)
 .PHONY: debug
 debug: $(OUTDIR)/gem
 debug: OPT = -FR -r8 -O0 -g
 
+# vtune profiling on KNL nodes
 .PHONY: vtune
 vtune: $(OUTDIR)/gem
 vtune: OPT = -FR -r8 -O2 -xMIC-AVX512 -qopenmp -g -dynamic
 
+# vtune profiling on haswell nodes
 .PHONY: vtune-hsw
 vtune-hsw: $(OUTDIR)/gem
 vtune-hsw: OPT = -FR -r8 -O2 -g -dynamic
 
+# ipm profiling
 .PHONY: ipm
 ipm: $(OUTDIR)/gem
 ipm: LIBS += $$IPM
 
+# compilation logs to see what gets vectorized
 .PHONY: vectest
 vectest: $(OUTDIR)/gem
 vectest: OPT = -FR -r8 -O2 -xMIC-AVX512 -qopenmp -qopt-report=5
 vectest: LIBS += $$IPM
 
+# build in a different directory and link with IPM for scaling tests (KNL)
 .PHONY: scaling
 scaling: $(OUTDIR)/gem
 scaling: OPT = -FR -r8 -O2 -xMIC-AVX512
 scaling: LIBS += $$IPM
 
+# build in a different directory and link with IPM for scaling tests (KNL)
 .PHONY: scaling-hsw
 scaling-hsw: $(OUTDIR)/gem
 scaling-hsw: OPT = -FR -r8 -O2
 scaling-hsw: LIBS += $$IPM
 
+# allinea map profiling (knl)
 .PHONY: map
 map: $(OUTDIR)/gem
 map: OPT = -FR -r8 -O2 -g -xMIC-AVX512
-#map: OPT = -FR -r8 -O2 -g
 map: LIBS += -Wl,@./allinea-profiler.ld
+
+# allinea map profiling (haswell)
+.PHONY: map-hsw
+map-hsw: $(OUTDIR)/gem
+map-hsw: OPT = -FR -r8 -O2 -g
+map-hsw: LIBS += -Wl,@./allinea-profiler.ld
 
 .PHONY: all
 all: $(OUTDIR)/gem
