@@ -4052,8 +4052,9 @@ END INTERFACE
       integer :: mythread, myjmin, myjmax
 
       real(8) :: time1, time2
+      logical :: rectime = .False.
 
-      if (myid == master) time1 = MPI_WTIME()
+      if (myid == master .and. rectime) time1 = MPI_WTIME()
 
       nonfi = 1 
       nonfe = 1 
@@ -4073,7 +4074,7 @@ END INTERFACE
       mydnidt = 0.
 
       ! 0.00034
-      if (myid == master) then
+      if (myid == master .and. rectime) then
          time2 = MPI_WTIME()
          write (*,'(I0,A,I0)'), mm(ns), ',', mme
          write (*,'(A)',advance='no') '   01 '
@@ -4243,26 +4244,40 @@ END INTERFACE
       enddo
       !$OMP END PARALLEL DO
 
-      do m=1,mm(ns)
+      !$OMP PARALLEL PRIVATE(m, i, j, k, wght, wght1, xdot, ydot, zdot)&
+      !$OMP& PRIVATE(mythread, myjmin, myjmax)
+      mythread = omp_get_thread_num()
+
+      ! particles will be distributed in interval (myjmin, myjmax]
+      myjmin = mythread * jmx / nthreads
+      myjmax = (mythread + 1) * jmx / nthreads
+
+      ! first thread should distribute on 0
+      if (mythread == 0) myjmin = -1
+
+      do m = 1, mm(ns)
          wght = wght0ar(m)
          wght1 = wght1ar(m)
          xdot = xdotar(m)
          ydot = ydotar(m)
          zdot = zdotar(m)
-         
          do l=1,lr(1)
-            i = iarl(l, m)
             j = jarl(l, m)
-            k = karl(l, m)
-            myjpar(i,j,k) = myjpar(i,j,k)+wght*zdot
-            myjpex(i,j,k) = myjpex(i,j,k)+wght*xdot
-            myjpey(i,j,k) = myjpey(i,j,k)+wght*ydot
-            mydnidt(i,j,k) = mydnidt(i,j,k)+wght1
+            if (j > myjmin .and. j <= myjmax) then
+               i = iarl(l, m)
+               k = karl(l, m)
+
+               myjpar(i,j,k) = myjpar(i,j,k)+wght*zdot
+               myjpex(i,j,k) = myjpex(i,j,k)+wght*xdot
+               myjpey(i,j,k) = myjpey(i,j,k)+wght*ydot
+               mydnidt(i,j,k) = mydnidt(i,j,k)+wght1
+            end if
          end do
       end do
+      !$OMP END PARALLEL
 
       ! 0.100
-      if (myid == master) then
+      if (myid == master .and. rectime) then
          time2 = MPI_WTIME()
          write (*,'(A)',advance='no') '   02 '
          write (*,*) time2 - time1
@@ -4278,7 +4293,7 @@ END INTERFACE
 !      call filter(mydnidt)
 
       ! 0.0023
-      if (myid == master) then
+      if (myid == master .and. rectime) then
          time2 = MPI_WTIME()
          write (*,'(A)',advance='no') '   03 '
          write (*,*) time2 - time1
@@ -4319,7 +4334,7 @@ END INTERFACE
       mydnedt = 0.
 
       ! 0.0014
-      if (myid == master) then
+      if (myid == master .and. rectime) then
          time2 = MPI_WTIME()
          write (*,'(A)',advance='no') '   04 '
          write (*,*) time2 - time1
@@ -4502,7 +4517,7 @@ END INTERFACE
       !$OMP END PARALLEL DO
 
       ! 0.10
-      if (myid == master) then
+      if (myid == master .and. rectime) then
          time2 = MPI_WTIME()
          write (*,'(A)',advance='no') '   05 '
          write (*,*) time2 - time1
@@ -4575,7 +4590,7 @@ END INTERFACE
       !$OMP END PARALLEL
 
       ! 0.0024
-      if (myid == master) then
+      if (myid == master .and. rectime) then
          time2 = MPI_WTIME()
          write (*,'(A)',advance='no') '   06 '
          write (*,*) time2 - time1
@@ -4601,7 +4616,7 @@ END INTERFACE
       end do
 
       ! 0.0013
-      if (myid == master) then
+      if (myid == master .and. rectime) then
          time2 = MPI_WTIME()
          write (*,'(A)',advance='no') '   07 '
          write (*,*) time2 - time1
