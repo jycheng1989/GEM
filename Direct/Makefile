@@ -1,143 +1,46 @@
-# I rewrote this to make it easier to maintain. Here are the main changes:
-#
-# * everything is built in a subdirectory so the root doesn't get cluttered
-#
-# * we can have independent build directories for different sets of compilation
-#   flags (this makes optimization and profiling easier)
-#
-# * rules are generalized, so to add a file, we just append it to $(SRCS)
+SRCS =	gem_com.f90 gem_equil.f90 gem_main.f90 gem_outd.f90 gem_fcnt.f90 gem_fft_wrapper.f90 gem_gkps_adi.f90 regtest.f90
 
-# source files
-SRCS = erf.f gem_com.f90 equil.f90 gem.f90 outd.f90 fcnt.f fft_wrapper.f regtest.f90
+OBJS =	gem_com.o gem_equil.o gem_main.o gem_outd.o gem_fcnt.o gem_fft_wrapper.o gem_gkps_adi.o
 
-# this next line is a bit weird; it generates object file names automatically
-# from sources (we have both .f and .f90 files, so we need to mess around a bit)
-# it first substitutes out all the .f suffixes for .o, then all the .f90, and
-# then prepends the build directory to the file name
-OBJS = $(addprefix $(OUTDIR)/,$(patsubst %.f90,%.o,$(patsubst %.f,%.o,$(SRCS))))
+LIBS = $(DFFTPACK)
+PLIB = gem_pputil.o
 
-# modules, their files should be compiled before some others
-MODNAMES = fft_wrapper.mod gem_com.mod equil.mod regtest.mod
-MODS = $(addprefix $(OUTDIR)/modules/,$(MODNAMES))
-
-# pputil module must be compiled first
-PLIB = $(OUTDIR)/pputil.o
-
-# compiler (should we change this to ifort if we use intel-specific stuff?)
 F90 = ftn
-
-# build directory
-# equal to name of primary target or 'build' if none specified
-ifdef MAKECMDGOALS
-	OUTDIR = $(MAKECMDGOALS)
-else
-	OUTDIR = build
-endif
-
-# default options
-LIBS = $(DFFTPACK) -mkl
 #OPT = -FR -r8 -heap-arrays -O2 -g -traceback -check bounds
-OPT = -FR -r8 -O2 -qopenmp
-MODOPT = -module $(OUTDIR)/modules
+OPT = -FR -r8 -O3
+LDFLAGS = 
 
+#all : gem
 
-# here are all the targets, this shows how easy it is to add a new set of flags
+gem_main: gem_equil.o gem_main.o gem_outd.o gem_fcnt.o gem_pputil.o gem_com.o gem_fft_wrapper.o gem_gkps_adi.o regtest.o
+	$(F90) -o gem_main $(OPT) $(OBJS) $(PLIB) $(LIBS) 
 
-# build for haswell nodes
-.PHONY: build
-build: $(OUTDIR)/gem
+gem_pputil.o: gem_pputil.f90
+	$(F90) -c $(OPT) gem_pputil.f90
 
-# build for KNL nodes
-.PHONY: build-knl
-build-knl: $(OUTDIR)/gem
-build-knl: OPT = -FR -r8 -O2 -xMIC-AVX512 -qopenmp
+gem_com.o: gem_com.f90 gem_pputil.o
+	$(F90) -c $(OPT) gem_com.f90
 
-# debug build (no optimization)
-.PHONY: debug
-debug: $(OUTDIR)/gem
-debug: OPT = -FR -r8 -O0 -g
+gem_equil.o: gem_equil.f90 gem_pputil.o
+	$(F90) -c $(OPT) gem_equil.f90
 
-# vtune profiling on KNL nodes
-.PHONY: vtune
-vtune: $(OUTDIR)/gem
-vtune: OPT = -FR -r8 -O2 -xMIC-AVX512 -qopenmp -g -dynamic
+gem_gkps_adi.o: gem_gkps_adi.f90 gem_com.f90 gem_equil.f90 gem_pputil.f90
+	$(F90) -c $(OPT) gem_gkps_adi.f90
 
-# vtune profiling on haswell nodes
-.PHONY: vtune-hsw
-vtune-hsw: $(OUTDIR)/gem
-vtune-hsw: OPT = -FR -r8 -O2 -g -dynamic
+gem_main.o: gem_main.f90 gem_fft_wrapper.o gem_pputil.o gem_com.o gem_equil.o gem_gkps_adi.o
+	$(F90) -c $(OPT) gem_main.f90
 
-# ipm profiling
-.PHONY: ipm
-ipm: $(OUTDIR)/gem
-ipm: LIBS += $$IPM
+gem_outd.o: gem_outd.f90 gem_fft_wrapper.o gem_pputil.o gem_com.o gem_equil.o
+	$(F90) -c $(OPT) gem_outd.f90
 
-# compilation logs to see what gets vectorized
-.PHONY: vectest
-vectest: $(OUTDIR)/gem
-vectest: OPT = -FR -r8 -O2 -xMIC-AVX512 -qopenmp -qopt-report=5
-vectest: LIBS += $$IPM
+gem_fcnt.o: gem_fcnt.f90
+	$(F90) -c $(OPT) gem_fcnt.f90
 
-# build in a different directory and link with IPM for scaling tests (KNL)
-.PHONY: scaling
-scaling: $(OUTDIR)/gem
-scaling: OPT = -FR -r8 -O2 -xMIC-AVX512
-scaling: LIBS += $$IPM
+gem_fft_wrapper.o: gem_fft_wrapper.f90
+	$(F90) -c $(OPT) gem_fft_wrapper.f90
 
-# build in a different directory and link with IPM for scaling tests (KNL)
-.PHONY: scaling-hsw
-scaling-hsw: $(OUTDIR)/gem
-scaling-hsw: OPT = -FR -r8 -O2
-scaling-hsw: LIBS += $$IPM
+regtest.o: regtest.f90
+	$(F90) -c $(OPT) regtest.f90
 
-# allinea map profiling (knl)
-.PHONY: map
-map: $(OUTDIR)/gem
-map: OPT = -FR -r8 -O2 -g -xMIC-AVX512
-map: LIBS += -Wl,@./allinea-profiler.ld
-
-# allinea map profiling (haswell)
-.PHONY: map-hsw
-map-hsw: $(OUTDIR)/gem
-map-hsw: OPT = -FR -r8 -O2 -g
-map-hsw: LIBS += -Wl,@./allinea-profiler.ld
-
-.PHONY: all
-all: $(OUTDIR)/gem
-
-.PHONY: clean
 clean:
-	rm -rf $(OBJS) $(PLIB) $(OUTDIR)/modules/*.mod $(OUTDIR)/*.optrpt
-
-# generalized compilation rules
-$(OUTDIR)/gem: $(OBJS)
-	mkdir -p $(OUTDIR)/out $(OUTDIR)/dump $(OUTDIR)/matrix
-	cp *.txt $(OUTDIR)
-	$(F90) -o $(OUTDIR)/gem $(OPT) $(MODOPT) $(OBJS) $(PLIB) $(LIBS)
-
-# plib gets built first, so we can create our directories here
-$(PLIB): pputil.f
-	mkdir -p $(OUTDIR)/modules
-	$(F90) -c $(OPT) $(MODOPT) -o $@ $<
-
-$(OUTDIR)/%.o: %.f90
-	$(F90) -c $(OPT) $(MODOPT) -o $@ $<
-
-$(OUTDIR)/%.o: %.f
-	$(F90) -c $(OPT) $(MODOPT) -o $@ $<
-
-$(OUTDIR)/modules/%.mod: $(OUTDIR)/%.o;
-
-
-# file-specific compilation options/dependencies can go down here:
-
-# compile pputil first
-$(OBJS): $(PLIB)
-
-# required module files
-$(OUTDIR)/gem.o: $(MODS)
-$(OUTDIR)/outd.o: $(MODS)
-
-# erf.f is in fixed format
-$(OUTDIR)/erf.o: erf.f
-	$(F90) -c $(OPT) $(MODOPT) -FI -o $@ $<
+	rm -f *.o *.lst *.mod gem_main

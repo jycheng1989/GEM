@@ -17,7 +17,7 @@
  3.     5000     1       1.0     1.0     137.44
 
 'iput iget ision isiap   peritr llk mlk onemd izonal adiabatic_electron ineq0   iflut'
-  1    0     1     0       0     0   1    1     1             1           1       1
+  1    0     1     0       0     0   1    1     1             0           1       1
 
 'nplot XNPLT modem nzcrt npze npzi npzc npzb'
  100   10      4    4     2    2    16   16
