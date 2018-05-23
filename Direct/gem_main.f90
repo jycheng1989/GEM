@@ -5,6 +5,7 @@ program gem_main
   use gem_com
   use gem_equil
   use gem_fft_wrapper
+  use regtest
 
   implicit none
   integer :: n,i,j,k,ip
@@ -45,7 +46,7 @@ program gem_main
   if (verify_jie) then
      ! verify current version of jie against reference data and exit
      if (myid==master) write(*,*) 'TESTING jie AGAINST orig-0-4'
-     call regtest_jie(.False., projdir//'jie-ref' ,'orig-0-4', 0, 4)
+     call regtest_jie(.False., projdir//'jie-ref', 'orig-0-4', 0, 4)
   end if
 
   ! if we're verifying anything, we exit instead of running the main loop
@@ -5194,7 +5195,7 @@ subroutine split_weight(n,ip)
      ! testing/profiling stuff:
      if (jie_ref .and. n == 4 .and. ip == 0) then
         ! regression testing
-        call regtest_jie(.True., projdir//'jie-ref' ,'orig-0-4', ip, n)
+        call regtest_jie(.True., projdir//'jie-ref', 'orig-0-4', ip, n)
         if (myid==master) write (*,*) 'Logged jie reference case'
      else if (profjie) then
         ! profiling

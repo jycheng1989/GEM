@@ -120,7 +120,7 @@ contains
   ! file name is <datadir>/jpar0.<tmpname>.<id>.in.regtest
   subroutine regtest_jpar0_insave(datadir, tmpname)
     use gem_com
-    use equil
+    use gem_equil
     implicit none
     character(len=*) :: datadir
     character(len=*) :: tmpname
@@ -203,7 +203,7 @@ contains
   ! reads in reference input variables to set up test
   subroutine regtest_jpar0_inload(datadir, tmpname)
     use gem_com
-    use equil
+    use gem_equil
     implicit none
     character(len=*) :: datadir
     character(len=*) :: tmpname
@@ -286,7 +286,7 @@ contains
   ! file name is <datadir>/jpar0.<tmpname>.<id>.out.regtest
   subroutine regtest_jpar0_outsave(datadir, tmpname)
     use gem_com
-    use equil
+    use gem_equil
     implicit none
     character(len=*) :: datadir
     character(len=*) :: tmpname
@@ -311,7 +311,7 @@ contains
   ! loads output variables for comparison
   subroutine regtest_jpar0_outload(datadir, tmpname)
     use gem_com
-    use equil
+    use gem_equil
     implicit none
     character(len=*) :: datadir
     character(len=*) :: tmpname
@@ -407,7 +407,7 @@ contains
   ! file name is <datadir>/jie.<tmpname>.<id>.in.regtest
   subroutine regtest_jie_insave(datadir, tmpname)
     use gem_com
-    use equil
+    use gem_equil
     implicit none
     character(len=*) :: datadir
     character(len=*) :: tmpname
@@ -539,7 +539,7 @@ contains
   ! reads in reference input variables to set up test
   subroutine regtest_jie_inload(datadir, tmpname)
     use gem_com
-    use equil
+    use gem_equil
     implicit none
     character(len=*) :: datadir
     character(len=*) :: tmpname
@@ -671,7 +671,7 @@ contains
   ! file name is <datadir>/jie.<tmpname>.<id>.out.regtest
   subroutine regtest_jie_outsave(datadir, tmpname)
     use gem_com
-    use equil
+    use gem_equil
     implicit none
     character(len=*) :: datadir
     character(len=*) :: tmpname
@@ -702,7 +702,7 @@ contains
   ! loads output variables for comparison
   subroutine regtest_jie_outload(datadir, tmpname)
     use gem_com
-    use equil
+    use gem_equil
     implicit none
     character(len=*) :: datadir
     character(len=*) :: tmpname
