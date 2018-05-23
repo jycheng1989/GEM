@@ -1,3 +1,17 @@
+build
+build-knl
+debug
+vtune
+ipm
+vectest
+scaling
+scaling-hsw
+vtune
+vtune-hsw
+map
+*.ld
+*.a
+
 sweep
 *.out
 
@@ -29,6 +43,3 @@ matrix/
 out/
 
 *.ps
-
-
-

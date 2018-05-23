@@ -5,9 +5,15 @@ program gem_main
   use gem_com
   use gem_equil
   use gem_fft_wrapper
+  use regtest
 
   implicit none
   integer :: n,i,j,k,ip
+
+  ! debugging
+  logical :: ioenabled=.True.
+  logical,parameter :: verify_jpar0=.False.
+  logical,parameter :: verify_jie=.False.
 
   call initialize
   ! use the following two lines for r-theta contour plot
@@ -26,6 +32,26 @@ program gem_main
      goto 100
   end if
 
+  ! TESTING: jpar0 and jie
+  if (verify_jpar0) then
+     ! verify current version of jpar0 against reference data and exit
+     if (myid==master) write(*,*) 'TESTING jpar0 AGAINST orig-0-4-2-0'
+     call regtest_jpar0(.False., projdir//'jpar0-ref', 'orig-0-4-2-0',&
+          0, 4, 2, 0)
+
+     if (myid==master) write(*,*) 'TESTING jpar0 AGAINST orig-0-4-10-1'
+     call regtest_jpar0(.False., projdir//'jpar0-ref', 'orig-0-4-10-1',&
+          0, 4, 10, 1)
+  end if
+  if (verify_jie) then
+     ! verify current version of jie against reference data and exit
+     if (myid==master) write(*,*) 'TESTING jie AGAINST orig-0-4'
+     call regtest_jie(.False., projdir//'jie-ref', 'orig-0-4', 0, 4)
+  end if
+
+  ! if we're verifying anything, we exit instead of running the main loop
+  if (verify_jpar0 .or. verify_jie) goto 525
+
   do  timestep=ncurr,nm
      tcurr = tcurr+dt
 
@@ -34,9 +60,14 @@ program gem_main
      call poisson(timestep-1,0)
      call field(timestep-1,0)
      call split_weight(timestep-1,0)
-     call diagnose(timestep-1)
-     call reporter(timestep-1)
 
+     if (ioenabled) then
+        call diagnose(timestep-1)
+        call reporter(timestep-1)
+     else
+        call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+     end if
+     
      call push_wrapper(timestep,1)
 
      call accumulate(timestep,1)
@@ -48,18 +79,23 @@ program gem_main
      call push_wrapper(timestep,0)
      if(mod(timestep,1000)==0)then
         do i=0,last 
-           !                 if(myid==i)write(*,*)myid,mm(1),mme
+           if(myid==i.and.ioenabled) write(*,*)myid,mm(1),mme
            call MPI_BARRIER(MPI_COMM_WORLD,ierr)
         end do
      end if
 
   end do
-  call ftcamp
+
+  ! mostly IO, should be disabled when profiling
+  if (ioenabled) call ftcamp
+
+525 continue
+  
   lasttm=MPI_WTIME()
   tottm=lasttm-starttm
-  !  write(*,*)'ps time=',pstm,'tot time=',tottm
+  if(ioenabled) write(*,*)'ps time=',pstm,'tot time=',tottm
   do i=0,last 
-     !            if(myid==i)write(*,*)myid,mm(1),mme
+     if(myid==i.and.ioenabled)write(*,*)myid,mm(1),mme
      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
   end do
 
@@ -114,6 +150,9 @@ subroutine init
   real :: grp,gxdgyp,jacp,jfnp,gn0ep,gt0ep,gt0ip,grdgtp,gthp
   real,DIMENSION (1:5) :: gn0sp
   real :: wx0,wx1,wz0,wz1,b
+
+  include "omp_lib.h"
+  nthreads = omp_get_max_threads()
 
   IU=cmplx(0.,1.)
   pi=4.0*atan(1.0)
@@ -1022,7 +1061,7 @@ subroutine cpush(n,ns)
   nos(1,n)=nostemp/( float(tmm(1)) )
   ke(1,n)=ketemp/( 2.*float(tmm(1))*mims(ns) )
 
-  call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+  !call MPI_BARRIER(MPI_COMM_WORLD,ierr)
 
   sbuf(1:nsubd) = myefl_es(1:nsubd)
   call MPI_ALLREDUCE(sbuf,rbuf,10,  &
@@ -1060,7 +1099,7 @@ subroutine cpush(n,ns)
   !      efl(1,n)=mims(ns)/tets(1)*efltemp/( float(tmm(1)) )
 
   np_old=mm(ns) 
-  call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+  ! call MPI_BARRIER(MPI_COMM_WORLD,ierr)
   call init_pmove(z3(ns,:),np_old,lz,ierr)
   !     
   call pmove(x2(ns,:),np_old,np_new,ierr)
@@ -1241,7 +1280,7 @@ subroutine grid1(ip,n)
         enddo
      enddo
      if(idg.eq.1)write(*,*)myid,'pass ion grid1'
-     call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+     !call MPI_BARRIER(MPI_COMM_WORLD,ierr)
      !   enforce periodicity
      call enforce(myden(:,:,:))
      call enforce(myjpar)
@@ -1665,6 +1704,8 @@ subroutine gkps(nstep,ip)
   character(len=70) fname
   character(len=5) holdmyid
 
+  LOGICAL :: ioenabled
+  
   save formphi,formfe,ifirst,akx,aky,mx,gamb1,gamb2,ipiv
   if(idg==1)write(*,*)'enter gkps'
 
@@ -1678,7 +1719,7 @@ subroutine gkps(nstep,ip)
      allocate(mx(imx-1,imx-1,0:jcnt-1,0:1),formphi(0:imx-1,0:jcnt-1,0:1))
      allocate(formfe(0:imx-1,0:jcnt-1,0:1),ipiv(imx-1,imx-1,0:jcnt-1,0:1))
 
-     if(iget.eq.1) then
+     if(iget.eq.1.and.ioenabled) then
         open(10000+MyId,file=fname,form='unformatted',status='old')
         read(10000+MyId)mx,ipiv
         close(10000+myid)
@@ -1792,7 +1833,7 @@ subroutine gkps(nstep,ip)
         end do
      end do
 
-     if(iget.eq.0) then
+     if(iget.eq.0.and.ioenabled) then
         open(10000+MyId,file=fname,form='unformatted',status='unknown')
         write(10000+MyId)mx,ipiv
         close(10000+myid)
@@ -2117,6 +2158,8 @@ subroutine ezamp(nstep,ip)
   character(len=70) fname
   character(len=5) holdmyid
 
+  LOGICAL :: ioenabled
+  
   save formapa,ifirst,akx,aky,mx,IPIV
 
   write(holdmyid,'(I5.5)') MyId
@@ -2126,7 +2169,7 @@ subroutine ezamp(nstep,ip)
      allocate(nab2(0:imx-1,0:jcnt-1,0:imx-1,0:1),ipiv(imx-1,imx-1,0:jcnt-1,0:1))
      allocate(mx(imx-1,imx-1,0:jcnt-1,0:1),formapa(0:imx-1,0:jcnt-1,0:1))
 
-     if(iget.eq.1) then
+     if(iget.eq.1.and.ioenabled) then
         open(20000+MyId,file=fname,form='unformatted',status='old')
         read(20000+MyId)mx,ipiv
         close(20000+myid)
@@ -2230,7 +2273,7 @@ subroutine ezamp(nstep,ip)
         end do
      end do
 
-     if(iget.eq.0) then
+     if(iget.eq.0.and.ioenabled) then
         open(20000+MyId,file=fname,form='unformatted',status='unknown')
         write(20000+MyId)mx,ipiv
         close(20000+myid)
@@ -2480,11 +2523,11 @@ subroutine filter(u)
 
   call MPI_BCAST(uz0,(imx+1)*(jmx+1),MPI_REAL8,0, &
        TUBE_COMM,ierr)
-  call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+  !call MPI_BARRIER(MPI_COMM_WORLD,ierr)
 
   call MPI_BCAST(uz1,(imx+1)*(jmx+1),MPI_REAL8,GLST, &
        tube_comm,ierr)
-  call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+  !call MPI_BARRIER(MPI_COMM_WORLD,ierr)
 
   do i = 0,imx
      do j = 0,jmx
@@ -2516,10 +2559,10 @@ subroutine filter(u)
   ndum = (imx+1)*(jmx+1)*(NMDZ)
   call MPI_ALLREDUCE(cc0(0,0,0),cc1(0,0,0),ndum,MPI_REAL8, &
        MPI_SUM,tube_comm,ierr)
-  call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+  !call MPI_BARRIER(MPI_COMM_WORLD,ierr)
   call MPI_ALLREDUCE(ss0(0,0,0),ss1(0,0,0),ndum,MPI_REAL8, &
        MPI_SUM,tube_comm,ierr)
-  call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+  !call MPI_BARRIER(MPI_COMM_WORLD,ierr)
 
   do i = 0,im
      do j = 0,jm
@@ -2914,6 +2957,7 @@ subroutine loadi(ns)
   !      return
 end subroutine loadi
 !ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+! makes (depositied) grid variable periodic
 subroutine enforce(u)
   use gem_com
   use gem_equil
@@ -2947,7 +2991,7 @@ subroutine enforce(u)
        MPI_REAL8, &
        lngbr,101, &
        tube_comm,stat,ierr) 
-  call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+  !call MPI_BARRIER(MPI_COMM_WORLD,ierr)
   lbfs=u(:,:,0)
   call MPI_SENDRECV(lbfs(0,0),(imx+1)*(jmx+1), &
        MPI_REAL8, &
@@ -2956,7 +3000,7 @@ subroutine enforce(u)
        MPI_REAL8, &
        rngbr,102, &
        tube_comm,stat,ierr) 
-  call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+  !call MPI_BARRIER(MPI_COMM_WORLD,ierr)
   do i=0,im
      do j=0,jm
         u(i,j,0)=u(i,j,0)  &
@@ -3129,7 +3173,7 @@ subroutine enfz(u)
        rbfr(0,0),(imx+1)*(jmx+1), &
        MPI_REAL8,rngbr,205,  &
        tube_comm,stat,ierr)
-  call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+  !call MPI_BARRIER(MPI_COMM_WORLD,ierr)
   do i=0,im
      do j=0,jm
         u(i,j,0)=(weightp(i)*lbfr(i,jpl(i,j))  &
@@ -3167,6 +3211,11 @@ subroutine pint
   myavptch = 0.
   myaven = 0.
   pidum = 1./(pi*2)**1.5*(vwidthe)**3
+  !      !$OMP PARALLEL DO PRIVATE(i,k,r,wx0,wx1,wz0,wz1,dbdrp,dbdtp)&
+  !      !$OMP& PRIVATE(grcgtp,bfldp,radiusp,dydrp,qhatp,grp,gxdgyp,curvbzp,bdcrvbp,grdgtp)&
+  !      !$OMP& PRIVATE(fp,jfnp,psipp,ter,kaptp,kapnp,xnp,vncp,b,psip2p,dipdrp,vfac,vp0)&
+  !      !$OMP& PRIVATE(vpar,kap,wght,wght0,wght1,wght2,bstar,enerb,xdot,ydot,zdot,xt,yt)&
+  !      !$OMP& PRIVATE(eyp,exp1,ezp,delbxp,delbyp,dum1,dum2,vxdum,phip)
   do m=1,mme
      r=x2e(m)-0.5*lx+lr0
 
@@ -3690,7 +3739,7 @@ subroutine cint(n)
   ftrap = ttrap/totn
   !      nos(2,n)=nostemp/( float(tmm(2)) )
 
-  call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+  !call MPI_BARRIER(MPI_COMM_WORLD,ierr)
 
   sbuf(1:nsubd) = myefl_es(1:nsubd)
   call MPI_ALLREDUCE(sbuf,rbuf,10,  &
@@ -3817,7 +3866,7 @@ subroutine drdt(ip)
        rbfr,(imx+1)*(jmx+1),&
        MPI_REAL8,rngbr,405, &
        tube_comm,stat,ierr)
-  call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+  !call MPI_BARRIER(MPI_COMM_WORLD,ierr)
 
   do i = 0,im-1
      do j = 0,jm-1
@@ -3871,6 +3920,8 @@ subroutine dpdt(ip)
   character(len=70) fname
   character(len=5) holdmyid
 
+  LOGICAL :: ioenabled
+
   save formdpt,ifirst,akx,aky,mx,gamb1,gamb2,ipiv
   if(idg==1)write(*,*)'enter gkps'
 
@@ -3884,7 +3935,7 @@ subroutine dpdt(ip)
      allocate(mx(imx-1,imx-1,0:jcnt-1,0:1),formdpt(0:imx-1,0:jcnt-1,0:1))
      allocate(ipiv(imx-1,imx-1,0:jcnt-1,0:1))
 
-     if(iget.eq.1) then
+     if(iget.eq.1.and.ioenabled) then
         open(30000+MyId,file=fname,form='unformatted',status='old')
         read(30000+MyId)mx,ipiv
         close(30000+myid)
@@ -3995,7 +4046,7 @@ subroutine dpdt(ip)
         end do
      end do
 
-     if(iget.eq.0) then
+     if(iget.eq.0.and.ioenabled) then
         open(30000+MyId,file=fname,form='unformatted',status='unknown')
         write(30000+MyId)mx,ipiv
         close(30000+myid)
@@ -4087,24 +4138,44 @@ subroutine jie(ip,n)
   use gem_com
   use gem_equil
   implicit none
-  real :: phip,exp1,eyp,ezp,delbxp,delbyp,dpdzp,dadzp,aparp
-  real :: enerb,vxdum,dum,xdot,ydot,zdot,pidum,dum1,dum2
+  include "omp_lib.h"
+  REAL :: phip,exp1,eyp,ezp,delbxp,delbyp,dpdzp,dadzp,aparp
+  REAL :: enerb,vxdum,dum,xdot,ydot,zdot,pidum,dum1,dum2
   INTEGER :: m,n,i,j,k,l,ns,ip,nonfi,nonfe
-  real :: wx0,wx1,wy0,wy1,wz0,wz1,vte
-  real :: sz,wght,wght0,wght1,wght2,r,th,cost,sint,b,qr,dv,kap,ter
-  real :: kapnp,kaptp,xnp,psip2p,bdcrvbp,curvbzp,dipdrp,bstar
-  real :: xt,yt,rhog,vpar,xs,dely,vfac,vp0
-  real :: lbfs(0:imx,0:jmx)
-  real :: rbfs(0:imx,0:jmx)
-  real :: lbfr(0:imx,0:jmx)
-  real :: rbfr(0:imx,0:jmx)
+  REAL :: wx0,wx1,wy0,wy1,wz0,wz1,vte
+  REAL :: sz,wght,wght0,wght1,wght2,r,th,cost,sint,b,qr,dv,kap,ter
+  REAL :: kapnp,kaptp,xnp,psip2p,bdcrvbp,curvbzp,dipdrp,bstar
+  REAL :: xt,yt,rhog,vpar,xs,dely,vfac,vp0
+  REAL :: lbfs(0:imx,0:jmx)
+  REAL :: rbfs(0:imx,0:jmx)
+  REAL :: lbfr(0:imx,0:jmx)
+  REAL :: rbfr(0:imx,0:jmx)
   real :: myjpar(0:imx,0:jmx,0:1),myjpex(0:imx,0:jmx,0:1)
   real :: myjpey(0:imx,0:jmx,0:1),myupar(0:imx,0:jmx,0:1)
   real :: myupex(0:imx,0:jmx,0:1),myupey(0:imx,0:jmx,0:1)
   real :: myupazd(0:imx,0:jmx,0:1)
   real :: mydnidt(0:imx,0:jmx,0:1),mydnedt(0:imx,0:jmx,0:1)
-  real :: dbdrp,dbdtp,grcgtp,bfldp,fp,radiusp,dydrp,qhatp,psipp,jfnp,grdgtp
-  real :: grp,gxdgyp,rhox(4),rhoy(4),vncp,vparspp
+  REAL :: dbdrp,dbdtp,grcgtp,bfldp,fp,radiusp,dydrp,qhatp,psipp,jfnp,grdgtp
+  REAL :: grp,gxdgyp,rhox(4),rhoy(4),vncp,vparspp
+
+  ! position and weights for each particle (for loop strip-mining)
+  ! first loop: we're doing 1/2/4 point averaging for each species
+  real :: iarl(lr(1),maxval(mm))
+  real :: jarl(lr(1),maxval(mm))
+  real :: karl(lr(1),maxval(mm))
+  ! second loop: all particles
+  real :: iar(1:mme), jar(1:mme), kar(1:mme)
+  ! weight and [xyz]dot can be used in both (everything in mm is < mme)
+  real :: wght0ar(1:mme), wght1ar(1:mme), wght2ar(1:mme)
+  real :: xdotar(1:mme), ydotar(1:mme), zdotar(1:mme)
+
+  ! openmp domain decomp
+  integer :: mythread, myjmin, myjmax
+
+  real :: time1, time2
+  logical :: rectime = .False.
+
+  if (myid == master .and. rectime) time1 = MPI_WTIME()
 
   nonfi = 1 
   nonfe = 1 
@@ -4122,6 +4193,22 @@ subroutine jie(ip,n)
      myjpex = 0.
      myjpey = 0.
      mydnidt = 0.
+
+     ! 0.00034
+     if (myid == master .and. rectime) then
+        time2 = MPI_WTIME()
+        write (*,'(I0,A,I0)'), mm(ns), ',', mme
+        write (*,'(A)',advance='no') '   01 '
+        write (*,*) time2 - time1
+        time1 = MPI_WTIME()
+     end if
+
+     !$OMP PARALLEL DO PRIVATE(dv,i,j,k,l,r,th,cost,sint,wx0,wx1,wz0,wz1)&
+     !$OMP& PRIVATE(dbdrp,dbdtp,grcgtp,bfldp,radiusp,dydrp,qhatp,grp,gxdgyp)&
+     !$OMP& PRIVATE(curvbzp,bdcrvbp,grdgtp,fp,jfnp,psipp,ter,kaptp,kapnp,xnp)&
+     !$OMP& PRIVATE(vncp,vparspp,psip2p,dipdrp,b,rhog,vfac,vp0,vpar,kap)&
+     !$OMP& PRIVATE(rhox,rhoy,exp1,eyp,delbxp,delbyp,aparp,xs,xt,yt,bstar,enerb)&
+     !$OMP& PRIVATE(dum1,vxdum,xdot,ydot,zdot,wght,wght0,wght1)
      do m=1,mm(ns)
         dv=float(lr(ns))*(dx*dy*dz)
 
@@ -4211,8 +4298,8 @@ subroutine jie(ip,n)
         do l=1,lr(1)
            xs=x3(ns,m)+rhox(l) !rwx(1,l)*rhog
            yt=y3(ns,m)+rhoy(l) !(rwy(1,l)+sz*rwx(1,l))*rhog
-           xt=mod(xs+800.*lx,lx)
-           yt=mod(yt+800.*ly,ly)
+           xt=dmod(xs+800.*lx,lx)
+           yt=dmod(yt+800.*ly,ly)
            xt = min(xt,lx-1.0e-8)
            yt = min(yt,ly-1.0e-8)
 
@@ -4252,11 +4339,18 @@ subroutine jie(ip,n)
              -dipdrp/radiusp*mims(ns)*vpar**2/(q(ns)*bstar*b)*q0*br0*grcgtp/jfnp
 
         !    now do 1,2,4 point average, where lr is the no. of points...
+        wght1 = wght0*(vxdum*kap+q(ns)*(xdot*exp1/ter+(ydot-vp0)*eyp/ter))*xnp
+
+        wght0ar(m) = wght
+        wght1ar(m) = wght1
+        xdotar(m) = xdot
+        ydotar(m) = ydot
+        zdotar(m) = zdot
         do l=1,lr(1)
            xs=x3(ns,m)+rhox(l) !rwx(1,l)*rhog
            yt=y3(ns,m)+rhoy(l) !(rwy(1,l)+sz*rwx(1,l))*rhog
-           xt=mod(xs+800.*lx,lx)
-           yt=mod(yt+800.*ly,ly)
+           xt=dmod(xs+800.*lx,lx)
+           yt=dmod(yt+800.*ly,ly)
            xt = min(xt,lx-1.0e-8)
            yt = min(yt,ly-1.0e-8)
 
@@ -4264,13 +4358,52 @@ subroutine jie(ip,n)
            j=int(yt/dy+0.5)
            k=int(z3(ns,m)/dz+0.5)-gclr*kcnt
 
-           wght1 = wght0*(vxdum*kap+q(ns)*(xdot*exp1/ter+(ydot-vp0)*eyp/ter))*xnp
-           myjpar(i,j,k) = myjpar(i,j,k)+wght*zdot
-           myjpex(i,j,k) = myjpex(i,j,k)+wght*xdot
-           myjpey(i,j,k) = myjpey(i,j,k)+wght*ydot
-           mydnidt(i,j,k) = mydnidt(i,j,k)+wght1
+           iarl(l, m) = i
+           jarl(l, m) = j
+           karl(l, m) = k
         enddo
      enddo
+     !$OMP END PARALLEL DO
+
+     !$OMP PARALLEL PRIVATE(m, i, j, k, wght, wght1, xdot, ydot, zdot)&
+     !$OMP& PRIVATE(mythread, myjmin, myjmax)
+     mythread = omp_get_thread_num()
+
+     ! particles will be distributed in interval (myjmin, myjmax]
+     myjmin = mythread * jmx / nthreads
+     myjmax = (mythread + 1) * jmx / nthreads
+
+     ! first thread should distribute on 0
+     if (mythread == 0) myjmin = -1
+
+     do m = 1, mm(ns)
+        wght = wght0ar(m)
+        wght1 = wght1ar(m)
+        xdot = xdotar(m)
+        ydot = ydotar(m)
+        zdot = zdotar(m)
+        do l=1,lr(1)
+           j = jarl(l, m)
+           if (j > myjmin .and. j <= myjmax) then
+              i = iarl(l, m)
+              k = karl(l, m)
+
+              myjpar(i,j,k) = myjpar(i,j,k)+wght*zdot
+              myjpex(i,j,k) = myjpex(i,j,k)+wght*xdot
+              myjpey(i,j,k) = myjpey(i,j,k)+wght*ydot
+              mydnidt(i,j,k) = mydnidt(i,j,k)+wght1
+           end if
+        end do
+     end do
+     !$OMP END PARALLEL
+
+     ! 0.100
+     if (myid == master .and. rectime) then
+        time2 = MPI_WTIME()
+        write (*,'(A)',advance='no') '   02 '
+        write (*,*) time2 - time1
+        time1 = MPI_WTIME()
+     end if
 
      !   enforce periodicity
      call enforce(myjpar)
@@ -4279,6 +4412,14 @@ subroutine jie(ip,n)
      call enforce(mydnidt)
      !      call filter(myjpar)
      !      call filter(mydnidt)
+
+     ! 0.0023
+     if (myid == master .and. rectime) then
+        time2 = MPI_WTIME()
+        write (*,'(A)',advance='no') '   03 '
+        write (*,*) time2 - time1
+        time1 = MPI_WTIME()
+     end if
 
      do i=0,im
         do j=0,jm
@@ -4312,6 +4453,20 @@ subroutine jie(ip,n)
   myupey = 0.
   myupazd = 0.
   mydnedt = 0.
+
+  ! 0.0014
+  if (myid == master .and. rectime) then
+     time2 = MPI_WTIME()
+     write (*,'(A)',advance='no') '   04 '
+     write (*,*) time2 - time1
+     time1 = MPI_WTIME()
+  end if
+
+  !$OMP PARALLEL DO PRIVATE(i,j,k,dv,r,wx0,wx1,wz0,wz1,th,cost,sint,dbdrp,dbdtp)&
+  !$OMP& PRIVATE(grcgtp,bfldp,radiusp,dydrp,qhatp,grp,gxdgyp,curvbzp,bdcrvbp,grdgtp)&
+  !$OMP& PRIVATE(fp,jfnp,psipp,ter,kaptp,kapnp,xnp,vncp,b,psip2p,dipdrp,vfac,vp0)&
+  !$OMP& PRIVATE(vpar,kap,wght,wght0,wght1,wght2,bstar,enerb,xdot,ydot,zdot,xt,yt)&
+  !$OMP& PRIVATE(eyp,exp1,ezp,delbxp,delbyp,dum1,dum2,vxdum,phip)
   do m=1,mme
      dv=(dx*dy*dz)
 
@@ -4467,47 +4622,101 @@ subroutine jie(ip,n)
      wght1 = (wght+1./dv*phip*isg/ter*xnp)
      wght2 = wght*zdot
 
-     myupex(i,j,k)      =myupex(i,j,k)+wght1*w000(m)*xdot
-     myupex(i+1,j,k)    =myupex(i+1,j,k)+wght1*w100(m)*xdot
-     myupex(i,j+1,k)    =myupex(i,j+1,k)+wght1*w010(m)*xdot
-     myupex(i+1,j+1,k)  =myupex(i+1,j+1,k)+wght1*w110(m)*xdot
-     myupex(i,j,k+1)    =myupex(i,j,k+1)+wght1*w001(m)*xdot
-     myupex(i+1,j,k+1)  =myupex(i+1,j,k+1)+wght1*w101(m)*xdot
-     myupex(i,j+1,k+1)  =myupex(i,j+1,k+1)+wght1*w011(m)*xdot
-     myupex(i+1,j+1,k+1)=myupex(i+1,j+1,k+1)+wght1*w111(m)*xdot
-
-     myupey(i,j,k)      =myupey(i,j,k)+wght1*w000(m)*ydot
-     myupey(i+1,j,k)    =myupey(i+1,j,k)+wght1*w100(m)*ydot
-     myupey(i,j+1,k)    =myupey(i,j+1,k)+wght1*w010(m)*ydot
-     myupey(i+1,j+1,k)  =myupey(i+1,j+1,k)+wght1*w110(m)*ydot
-     myupey(i,j,k+1)    =myupey(i,j,k+1)+wght1*w001(m)*ydot
-     myupey(i+1,j,k+1)  =myupey(i+1,j,k+1)+wght1*w101(m)*ydot
-     myupey(i,j+1,k+1)  =myupey(i,j+1,k+1)+wght1*w011(m)*ydot
-     myupey(i+1,j+1,k+1)=myupey(i+1,j+1,k+1)+wght1*w111(m)*ydot
-
-     myupazd(i,j,k)      =myupazd(i,j,k)+wght2*w000(m)
-     myupazd(i+1,j,k)    =myupazd(i+1,j,k)+wght2*w100(m)
-     myupazd(i,j+1,k)    =myupazd(i,j+1,k)+wght2*w010(m)
-     myupazd(i+1,j+1,k)  =myupazd(i+1,j+1,k)+wght2*w110(m)
-     myupazd(i,j,k+1)    =myupazd(i,j,k+1)+wght2*w001(m)
-     myupazd(i+1,j,k+1)  =myupazd(i+1,j,k+1)+wght2*w101(m)
-     myupazd(i,j+1,k+1)  =myupazd(i,j+1,k+1)+wght2*w011(m)
-     myupazd(i+1,j+1,k+1)=myupazd(i+1,j+1,k+1)+wght2*w111(m)
-
      dum2 = 1./b*lr0/q0*qhatp*fp/radiusp*grcgtp
      vxdum = (eyp/b+vpar/b*delbxp)*dum2 
      wght0 = wght0*(vxdum*kap-xdot*exp1/ter-(ydot-vp0)*eyp/ter)*xnp
 
-     mydnedt(i,j,k)      =mydnedt(i,j,k)+wght0*w000(m)
-     mydnedt(i+1,j,k)    =mydnedt(i+1,j,k)+wght0*w100(m)
-     mydnedt(i,j+1,k)    =mydnedt(i,j+1,k)+wght0*w010(m)
-     mydnedt(i+1,j+1,k)  =mydnedt(i+1,j+1,k)+wght0*w110(m)
-     mydnedt(i,j,k+1)    =mydnedt(i,j,k+1)+wght0*w001(m)
-     mydnedt(i+1,j,k+1)  =mydnedt(i+1,j,k+1)+wght0*w101(m)
-     mydnedt(i,j+1,k+1)  =mydnedt(i,j+1,k+1)+wght0*w011(m)
-     mydnedt(i+1,j+1,k+1)=mydnedt(i+1,j+1,k+1)+wght0*w111(m)
-
+     iar(m) = i
+     jar(m) = j
+     kar(m) = k
+     wght0ar(m) = wght0
+     wght1ar(m) = wght1
+     wght2ar(m) = wght2
+     xdotar(m) = xdot
+     ydotar(m) = ydot
   enddo
+  !$OMP END PARALLEL DO
+
+  ! 0.10
+  if (myid == master .and. rectime) then
+     time2 = MPI_WTIME()
+     write (*,'(A)',advance='no') '   05 '
+     write (*,*) time2 - time1
+     time1 = MPI_WTIME()
+  end if
+
+  !$OMP PARALLEL PRIVATE(m, i, j, k, wght0, wght1, wght2, xdot, ydot)&
+  !$OMP& PRIVATE(mythread, myjmin, myjmax)
+  mythread = omp_get_thread_num()
+
+  ! particles will be distributed in interval (myjmin, myjmax]
+  myjmin = mythread * jmx / nthreads
+  myjmax = (mythread + 1) * jmx / nthreads
+
+  ! first thread should distribute on 0
+  if (mythread == 0) myjmin = -1
+
+  do m = 1, mme
+     i = iar(m)
+     j = jar(m)
+     k = kar(m)
+     wght0 = wght0ar(m)
+     wght1 = wght1ar(m)
+     wght2 = wght2ar(m)
+     xdot = xdotar(m)
+     ydot = ydotar(m)
+     if (j > myjmin .and. j <= myjmax) then
+        myupex(i,  j,  k)   = myupex(i,  j,  k) + wght1*w000(m)*xdot
+        myupex(i+1,j,  k)   = myupex(i+1,j,  k) + wght1*w100(m)*xdot
+        myupex(i,  j,  k+1) = myupex(i,  j,  k+1) + wght1*w001(m)*xdot
+        myupex(i+1,j,  k+1) = myupex(i+1,j,  k+1) + wght1*w101(m)*xdot
+
+        myupey(i,  j,  k)   = myupey(i,  j,  k) + wght1*w000(m)*ydot
+        myupey(i+1,j,  k)   = myupey(i+1,j,  k) + wght1*w100(m)*ydot
+        myupey(i,  j,  k+1) = myupey(i,  j,  k+1) + wght1*w001(m)*ydot
+        myupey(i+1,j,  k+1) = myupey(i+1,j,  k+1) + wght1*w101(m)*ydot
+
+        myupazd(i,  j,  k)   = myupazd(i,  j,  k) + wght2*w000(m)
+        myupazd(i+1,j,  k)   = myupazd(i+1,j,  k) + wght2*w100(m)
+        myupazd(i,  j,  k+1) = myupazd(i,  j,  k+1) + wght2*w001(m)
+        myupazd(i+1,j,  k+1) = myupazd(i+1,j,  k+1) + wght2*w101(m)
+
+        mydnedt(i,  j,  k)   = mydnedt(i,  j,  k) + wght0*w000(m)
+        mydnedt(i+1,j,  k)   = mydnedt(i+1,j,  k) + wght0*w100(m)
+        mydnedt(i,  j,  k+1) = mydnedt(i,  j,  k+1) + wght0*w001(m)
+        mydnedt(i+1,j,  k+1) = mydnedt(i+1,j,  k+1) + wght0*w101(m)
+     end if
+     if (j >= myjmin .and. j < myjmax) then
+        myupex(i,  j+1,k)   = myupex(i,  j+1,k) + wght1*w010(m)*xdot
+        myupex(i+1,j+1,k)   = myupex(i+1,j+1,k) + wght1*w110(m)*xdot
+        myupex(i,  j+1,k+1) = myupex(i,  j+1,k+1) + wght1*w011(m)*xdot
+        myupex(i+1,j+1,k+1) = myupex(i+1,j+1,k+1) + wght1*w111(m)*xdot
+
+        myupey(i,  j+1,k)   = myupey(i,  j+1,k) + wght1*w010(m)*ydot
+        myupey(i+1,j+1,k)   = myupey(i+1,j+1,k) + wght1*w110(m)*ydot
+        myupey(i,  j+1,k+1) = myupey(i,  j+1,k+1) + wght1*w011(m)*ydot
+        myupey(i+1,j+1,k+1) = myupey(i+1,j+1,k+1) + wght1*w111(m)*ydot
+
+        myupazd(i,  j+1,k)   = myupazd(i,  j+1,k) + wght2*w010(m)
+        myupazd(i+1,j+1,k)   = myupazd(i+1,j+1,k) + wght2*w110(m)
+        myupazd(i,  j+1,k+1) = myupazd(i,  j+1,k+1) + wght2*w011(m)
+        myupazd(i+1,j+1,k+1) = myupazd(i+1,j+1,k+1) + wght2*w111(m)
+
+        mydnedt(i,  j+1,k)   = mydnedt(i,  j+1,k) + wght0*w010(m)
+        mydnedt(i+1,j+1,k)   = mydnedt(i+1,j+1,k) + wght0*w110(m)
+        mydnedt(i,  j+1,k+1) = mydnedt(i,  j+1,k+1) + wght0*w011(m)
+        mydnedt(i+1,j+1,k+1) = mydnedt(i+1,j+1,k+1) + wght0*w111(m)
+     end if
+  end do
+  !$OMP END PARALLEL
+
+  ! 0.0024
+  if (myid == master .and. rectime) then
+     time2 = MPI_WTIME()
+     write (*,'(A)',advance='no') '   06 '
+     write (*,*) time2 - time1
+     time1 = MPI_WTIME()
+  end if
 
   !   enforce periodicity
   call enforce(myupex(:,:,:))
@@ -4527,6 +4736,13 @@ subroutine jie(ip,n)
      end do
   end do
 
+  ! 0.0013
+  if (myid == master .and. rectime) then
+     time2 = MPI_WTIME()
+     write (*,'(A)',advance='no') '   07 '
+     write (*,*) time2 - time1
+     time1 = MPI_WTIME()
+  end if
 
 999 continue
   !      return
@@ -4708,7 +4924,7 @@ subroutine accumulate(n,ip)
   if(ifluid==1)call setw(ip,n)
   call grid1(ip,n)
   if(idg.eq.1)write(*,*)'pass grid1'
-  call MPI_BARRIER(MPI_COMM_WORLD,ierr)        
+  !call MPI_BARRIER(MPI_COMM_WORLD,ierr)        
 end subroutine accumulate
 !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 subroutine poisson(n,ip)
@@ -4815,7 +5031,7 @@ subroutine poisson(n,ip)
   rmsphi(n)=sqrt(rmsphi(n)/(im*jm*km))
 
   if(idg.eq.1)write(*,*)'pass poisson'
-  call MPI_BARRIER(MPI_COMM_WORLD,ierr)        
+  !call MPI_BARRIER(MPI_COMM_WORLD,ierr)        
 end subroutine poisson
 !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 subroutine ampere(n,ip)
@@ -4827,14 +5043,57 @@ subroutine ampere(n,ip)
   real :: myrmsapa,rma(20),myavap(0:imx-1)
   real :: myjaca(0:imx-1),jaca(0:imx-1)
 
+  integer :: iprof
+  real :: proftime
+  logical :: profjpar = .False. ! if we're profiling jpar0
+  logical :: jpar_ref = .False. ! if we're doing a reference run for jpar0
+
   if(ifluid==1.and.beta.gt.1.e-8)then
      do i = 1,iter
-        call jpar0(ip,n,i,0)
+        ! reference run
+        if (jpar_ref .and. ip == 0 .and. n == 4 .and. i == 2) then
+           call regtest_jpar0(.True.,projdir//'jpar0-ref','orig-0-4-2-0',&
+                ip, n, i, 0)
+           if (myid==master) write (*,*) 'Logged jpar0 reference case 0'
+        else
+            ! DEFAULT CASE
+           call jpar0(ip,n,i,0)
+        end if
+
+        ! profiling
+        if (profjpar) then
+           call MPI_BARRIER(MPI_COMM_WORLD, ierr)
+           proftime = MPI_WTIME()
+
+           do iprof = 1, 50
+              call jpar0(ip,n,i,0)
+           enddo
+
+           call MPI_BARRIER(MPI_COMM_WORLD, ierr)
+           proftime = MPI_WTIME() - proftime
+
+           if (myid.eq.master) then
+              write (*,*) '50 iterations of jpar0: ', proftime
+           end if
+        end if
+        
         if(idg.eq.1)write(*,*)'pass jpar0'
         if(iperi==1)call ezampL(n,ip)
         if(iperi==0)call ezamp(n,ip)
         if(idg.eq.1)write(*,*)'pass ezamp'
+
         if(i==iter)call jpar0(ip,n,i,1)
+
+        ! reference run
+        if(i==iter .and. jpar_ref .and. ip == 0 .and. n == 4) then
+           call regtest_jpar0(.True.,projdir//'jpar0-ref','orig-0-4-10-1',&
+                ip, n, i, 1)
+           if (myid==master) write (*,*) 'Logged jpar0 reference case 0'
+        else if (i==iter) then
+           ! DEFAULT CASE
+           call jpar0(ip,n,i,1)
+        end if
+
         myrmsapa=0.
         rma(i)=0.
         do k=0,mykm-1
@@ -4914,17 +5173,51 @@ subroutine ampere(n,ip)
   rmsapa(n)=sqrt(rmsapa(n)/(im*jm*km))
 
   if(idg.eq.1)write(*,*)'pass filter(apar)'
-  call MPI_BARRIER(MPI_COMM_WORLD,ierr)        
+  !call MPI_BARRIER(MPI_COMM_WORLD,ierr)        
 end subroutine ampere
 !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 subroutine split_weight(n,ip)
   use gem_com
   use gem_equil
+  use regtest
   implicit none
 
   integer :: n,i,j,k,ip
+
+  integer :: itr
+  real :: proftime
+
+  logical :: profjie = .False. ! whether we're profiling jie
+  logical :: jie_ref = .False. ! whether we're doing a reference test for jie
+
   if(isg.gt.0..and.ifluid.eq.1)then
-     call jie(ip,n)
+
+     ! testing/profiling stuff:
+     if (jie_ref .and. n == 4 .and. ip == 0) then
+        ! regression testing
+        call regtest_jie(.True., projdir//'jie-ref', 'orig-0-4', ip, n)
+        if (myid==master) write (*,*) 'Logged jie reference case'
+     else if (profjie) then
+        ! profiling
+        call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+        proftime = MPI_WTIME()
+
+        do itr = 1, 50
+           call jie(ip,n)
+        end do
+
+        call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+        proftime = MPI_WTIME() - proftime
+
+        ! record time
+        if(myid.eq.master) then
+           write (*,*) 'time for 50 iterations of jie: ', proftime
+        end if
+     else
+        ! DEFAULT CASE
+        call jie(ip,n)
+     end if
+
      if(idg.eq.1)write(*,*)'pass jie'
      call drdt(ip)
      if(idg.eq.1)write(*,*)'pass drdt'
@@ -4933,7 +5226,7 @@ subroutine split_weight(n,ip)
      if(idg.eq.1)write(*,*)'pass dpdt'
   end if
   if(idg.eq.1)write(*,*)'pass split_weight'
-  call MPI_BARRIER(MPI_COMM_WORLD,ierr)        
+  !call MPI_BARRIER(MPI_COMM_WORLD,ierr)        
 end subroutine split_weight
 !ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 subroutine field(n,ip)
@@ -4945,7 +5238,7 @@ subroutine field(n,ip)
   if(idg.eq.1)write(*,*)'pass grad'
   call eqmo(ip)
   if(idg.eq.1)write(*,*)'pass eqmo'
-  call MPI_BARRIER(MPI_COMM_WORLD,ierr)        
+  !call MPI_BARRIER(MPI_COMM_WORLD,ierr)        
 end subroutine field
 !ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 subroutine push_wrapper(n,ip)
@@ -4953,6 +5246,9 @@ subroutine push_wrapper(n,ip)
   use gem_equil
   implicit none
   integer :: n,i,j,k,ip,ns
+  
+  logical :: profint = .False. ! if we're profiling pint and cint
+  real :: proftime
 
   do ns = 1,nsm
      if(ip.eq.1.and.ision==1)call ppush(n,ns)
@@ -4961,15 +5257,25 @@ subroutine push_wrapper(n,ip)
   if(ip==0)call colli(ip,n)
   if(idg.eq.1)write(*,*)'pass ppush'
 
+  proftime = MPI_WTIME()
+
   if(ip.eq.1.and.ifluid==1)call pint
   if(ip.eq.0.and.ifluid==1)call cint(n)
+
+  proftime = MPI_WTIME() - proftime
+  ! write time
+  if(profint.and.(myid.eq.master)) then
+     if (ip.eq.1) write (*,*) 'pint time: ', proftime
+     if (ip.eq.0) write (*,*) 'cint time: ', proftime
+  end if
+
   if(idg.eq.1)write(*,*)'pass pint'
   if(ifluid==1.and.ip==0)call lorentz(ip,n)
   !         if(ifluid==1.and.ip==0)call col(dt)
   !         if(ip.eq.0.and.mod(n+1,10).eq.0)call avgi(1)
   if(eprs>0.and.ip.eq.0.and.mod(n+1,nrst).eq.0)call rstpe
 
-  call MPI_BARRIER(MPI_COMM_WORLD,ierr)          
+  !call MPI_BARRIER(MPI_COMM_WORLD,ierr)          
 end subroutine push_wrapper
 !ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 subroutine diagnose(n)
@@ -5033,20 +5339,29 @@ subroutine jpar0(ip,n,it,itp)
   use gem_com
   use gem_equil
   implicit none
-  real :: phip,exp1,eyp,ezp,delbxp,delbyp,dpdzp,dadzp,aparp
-  real :: enerb,vxdum,dum,xdot,ydot,avede0
+  REAL :: phip,exp1,eyp,ezp,delbxp,delbyp,dpdzp,dadzp,aparp
+  REAL :: enerb,vxdum,dum,xdot,ydot,avede0
   INTEGER :: m,n,i,j,k,l,ns,ip,it,itp
-  real :: wx0,wx1,wy0,wy1,wz0,wz1,vte
-  real :: sz,wght,wght0,wght1,r,th,cost,sint,b,qr,dv,xnp
-  real :: xt,yt,zt,rhog,pidum,vpar,xs,dely,vfac,ter
-  real :: lbfs(0:imx,0:jmx)
-  real :: rbfs(0:imx,0:jmx)
-  real :: lbfr(0:imx,0:jmx)
-  real :: rbfr(0:imx,0:jmx)
+  REAL :: wx0,wx1,wy0,wy1,wz0,wz1,vte
+  REAL :: sz,wght,wght0,wght1,r,th,cost,sint,b,qr,dv,xnp
+  REAL :: xt,yt,zt,rhog,pidum,vpar,xs,dely,vfac,ter
+  REAL :: lbfs(0:imx,0:jmx)
+  REAL :: rbfs(0:imx,0:jmx)
+  REAL :: lbfr(0:imx,0:jmx)
+  REAL :: rbfr(0:imx,0:jmx)
   real :: myupa(0:imx,0:jmx,0:1),myupa0(0:imx,0:jmx,0:1),myden0(0:imx,0:jmx,0:1)
-  real :: dbdrp,dbdtp,grcgtp,bfldp,fp,radiusp,dydrp,qhatp,psipp,jfnp
-  real :: grp,gxdgyp
-  real :: zdot
+
+  ! position and weights for strip mining
+  real :: iar(1:mme), jar(1:mme), kar(1:mme)
+  real :: wght1ar(1:mme), wght0ar1(1:mme), wght0ar2(1:mme), wght01, wght02
+  ! openmp domain decomp
+  integer :: mythread, myjmin, myjmax
+
+  REAL :: dbdrp,dbdtp,grcgtp,bfldp,fp,radiusp,dydrp,qhatp,psipp,jfnp
+  REAL :: grp,gxdgyp
+  REAL :: zdot
+
+  include "omp_lib.h"
 
   pidum = 1./(pi*2)**1.5*(vwidthe)**3
   if(isuni.eq.0)pidum = 1.
@@ -5066,6 +5381,10 @@ subroutine jpar0(ip,n,it,itp)
      den0apa(:,:,:) = 0.
      return
   end if
+
+  !$OMP PARALLEL DO PRIVATE(i,j,k,r,vpar,wx0,wx1,wz0,wz1,th,ter,xnp,b,vfac)&
+  !$OMP& PRIVATE(grcgtp,radiusp,bfldp,dbdrp,jfnp,psipp,fp,enerb,zdot,dv,wght0,wght1)&
+  !$OMP& PRIVATE(xt,yt,zt,aparp)
   do m=1,mme
      r=x3e(m)-0.5*lx+lr0
      vpar = u3e(m)
@@ -5104,8 +5423,6 @@ subroutine jpar0(ip,n,it,itp)
         fp = wx0*f(i)+wx1*f(i+1)
         b=1.-tor+tor*bfldp
         enerb=(mue3(m)+emass*vpar*vpar/b)/qel*tor
-        zdot =  vpar*(1-tor+tor*q0*br0/radiusp/b*psipp*grcgtp)/jfnp &
-             +q0*br0*enerb/(b*b)*fp/radiusp*dbdrp*grcgtp/jfnp
      end if
 
      dv=(dx*dy*dz)
@@ -5131,39 +5448,87 @@ subroutine jpar0(ip,n,it,itp)
           + w011(m)*apar(i,j+1,k+1) &
           + w111(m)*apar(i+1,j+1,k+1)
 
-     if(itp==0)then
-        wght1 = wght1*aparp*vpar*vpar/amie/ter*xnp 
-        myupa0(i,j,k)      =myupa0(i,j,k)+wght1*w000(m)
-        myupa0(i+1,j,k)    =myupa0(i+1,j,k)+wght1*w100(m)
-        myupa0(i,j+1,k)    =myupa0(i,j+1,k)+wght1*w010(m)
-        myupa0(i+1,j+1,k)  =myupa0(i+1,j+1,k)+wght1*w110(m)
-        myupa0(i,j,k+1)    =myupa0(i,j,k+1)+wght1*w001(m)
-        myupa0(i+1,j,k+1)  =myupa0(i+1,j,k+1)+wght1*w101(m)
-        myupa0(i,j+1,k+1)  =myupa0(i,j+1,k+1)+wght1*w011(m)
-        myupa0(i+1,j+1,k+1)=myupa0(i+1,j+1,k+1)+wght1*w111(m)
-     end if
-     if(itp==1)then
-        wght0 = wght0*aparp*vpar*zdot/amie/ter*xnp 
-        myupa(i,j,k)      =myupa(i,j,k)+wght0*w000(m)
-        myupa(i+1,j,k)    =myupa(i+1,j,k)+wght0*w100(m)
-        myupa(i,j+1,k)    =myupa(i,j+1,k)+wght0*w010(m)
-        myupa(i+1,j+1,k)  =myupa(i+1,j+1,k)+wght0*w110(m)
-        myupa(i,j,k+1)    =myupa(i,j,k+1)+wght0*w001(m)
-        myupa(i+1,j,k+1)  =myupa(i+1,j,k+1)+wght0*w101(m)
-        myupa(i,j+1,k+1)  =myupa(i,j+1,k+1)+wght0*w011(m)
-        myupa(i+1,j+1,k+1)=myupa(i+1,j+1,k+1)+wght0*w111(m)
+     iar(m) = i
+     jar(m) = j
+     kar(m) = k
 
-        wght0 = 1./dv*aparp*vpar/ter*xnp 
-        myden0(i,j,k)      =myden0(i,j,k)+wght0*w000(m)
-        myden0(i+1,j,k)    =myden0(i+1,j,k)+wght0*w100(m)
-        myden0(i,j+1,k)    =myden0(i,j+1,k)+wght0*w010(m)
-        myden0(i+1,j+1,k)  =myden0(i+1,j+1,k)+wght0*w110(m)
-        myden0(i,j,k+1)    =myden0(i,j,k+1)+wght0*w001(m)
-        myden0(i+1,j,k+1)  =myden0(i+1,j,k+1)+wght0*w101(m)
-        myden0(i,j+1,k+1)  =myden0(i,j+1,k+1)+wght0*w011(m)
-        myden0(i+1,j+1,k+1)=myden0(i+1,j+1,k+1)+wght0*w111(m)
+     if(itp==0)then
+        wght1ar(m) = wght1*aparp*vpar*vpar/amie/ter*xnp
+     end if
+
+     if(itp==1)then
+        zdot =  vpar*(1-tor+tor*q0*br0/radiusp/b*psipp*grcgtp)/jfnp &
+             +q0*br0*enerb/(b*b)*fp/radiusp*dbdrp*grcgtp/jfnp
+        wght0ar1(m) = wght0*aparp*vpar*zdot/amie/ter*xnp
+        wght0ar2(m) = 1./dv*aparp*vpar/ter*xnp
      end if
   enddo
+  !$OMP END PARALLEL DO
+
+  !$OMP PARALLEL PRIVATE(m, i, j, k, wght1, wght01, wght02, mythread, myjmin, myjmax)
+  mythread = omp_get_thread_num()
+
+  ! particles will be distributed in interval (myjmin, myjmax]
+  myjmin = mythread * jmx / nthreads
+  myjmax = (mythread + 1) * jmx / nthreads
+
+  ! first thread should distribute on 0
+  if (mythread == 0) myjmin = -1
+
+  if (itp == 0) then
+     do m=1, mme
+        i = iar(m)
+        j = jar(m)
+        k = kar(m)
+        wght1 = wght1ar(m)
+
+        if (j > myjmin .and. j <= myjmax) then
+           myupa0(i,  j,  k)   = myupa0(i,j,k)       + wght1 * w000(m)
+           myupa0(i+1,j,  k)   = myupa0(i+1,j,k)     + wght1 * w100(m)
+           myupa0(i,  j,  k+1) = myupa0(i,j,k+1)     + wght1 * w001(m)
+           myupa0(i+1,j  ,k+1) = myupa0(i+1,j,k+1)   + wght1 * w101(m)
+        end if
+
+        if (j >= myjmin .and. j < myjmax) then
+           myupa0(i,  j+1,k)   = myupa0(i,j+1,k)     + wght1 * w010(m)
+           myupa0(i+1,j+1,k)   = myupa0(i+1,j+1,k)   + wght1 * w110(m)
+           myupa0(i,  j+1,k+1) = myupa0(i,j+1,k+1)   + wght1 * w011(m)
+           myupa0(i+1,j+1,k+1) = myupa0(i+1,j+1,k+1) + wght1 * w111(m)
+        end if
+     end do
+  else if (itp == 1) then
+     do m=1, mme
+        i = iar(m)
+        j = jar(m)
+        k = kar(m)
+        wght01 = wght0ar1(m)
+        wght02 = wght0ar2(m)
+        if (j > myjmin .and. j <= myjmax) then
+           myupa(i,  j,  k)   = myupa(i,  j,  k)   + wght01 * w000(m)
+           myupa(i+1,j,  k)   = myupa(i+1,j,  k)   + wght01 * w100(m)
+           myupa(i,  j,  k+1) = myupa(i,  j,  k+1) + wght01 * w001(m)
+           myupa(i+1,j,  k+1) = myupa(i+1,j,  k+1) + wght01 * w101(m)
+
+           myden0(i,  j,  k)   = myden0(i,  j,  k)   + wght02 * w000(m)
+           myden0(i+1,j,  k)   = myden0(i+1,j,  k)   + wght02 * w100(m)
+           myden0(i,  j,  k+1) = myden0(i,  j,  k+1) + wght02 * w001(m)
+           myden0(i+1,j,  k+1) = myden0(i+1,j,  k+1) + wght02 * w101(m)
+        end if
+
+        if (j >= myjmin .and. j < myjmax) then
+           myupa(i,  j+1,k)   = myupa(i,  j+1,k)   + wght01 * w010(m)
+           myupa(i+1,j+1,k)   = myupa(i+1,j+1,k)   + wght01 * w110(m)
+           myupa(i,  j+1,k+1) = myupa(i,  j+1,k+1) + wght01 * w011(m)
+           myupa(i+1,j+1,k+1) = myupa(i+1,j+1,k+1) + wght01 * w111(m)
+
+           myden0(i,  j+1,k)   = myden0(i,  j+1,k)   + wght02 * w010(m)
+           myden0(i+1,j+1,k)   = myden0(i+1,j+1,k)   + wght02 * w110(m)
+           myden0(i,  j+1,k+1) = myden0(i,  j+1,k+1) + wght02 * w011(m)
+           myden0(i+1,j+1,k+1) = myden0(i+1,j+1,k+1) + wght02 * w111(m)
+        end if
+     end do
+  end if
+  !$OMP END PARALLEL
 
   !   enforce periodicity
   if(itp==1)call enforce(myupa(:,:,:))
@@ -6611,7 +6976,7 @@ subroutine rstpe
        MPI_REAL8, &
        lngbr,101, &
        tube_comm,stat,ierr)
-  call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+  !call MPI_BARRIER(MPI_COMM_WORLD,ierr)
   lbfs(:,:,:,:)=h(:,:,0,:,:)
   call MPI_SENDRECV(lbfs(0,0,0,0),bfcnt, &
        MPI_REAL8, &
@@ -6620,7 +6985,7 @@ subroutine rstpe
        MPI_REAL8, &
        rngbr,102, &
        tube_comm,stat,ierr)
-  call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+  !call MPI_BARRIER(MPI_COMM_WORLD,ierr)
 
   do i = 0,imx
      do j = 0,jmx
@@ -6654,7 +7019,7 @@ subroutine rstpe
        MPI_REAL8, &
        lngbr,103, &
        tube_comm,stat,ierr)
-  call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+  !call MPI_BARRIER(MPI_COMM_WORLD,ierr)
   lbfs(:,:,:,:)=myg(:,:,0,:,:)
   call MPI_SENDRECV(lbfs(0,0,0,0),bfcnt, &
        MPI_REAL8, &
@@ -6663,7 +7028,7 @@ subroutine rstpe
        MPI_REAL8, &
        rngbr,104, &
        tube_comm,stat,ierr)
-  call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+  !call MPI_BARRIER(MPI_COMM_WORLD,ierr)
 
   do i = 0,imx
      do j = 0,jmx
@@ -6884,7 +7249,7 @@ subroutine gam(u,v)
 
      call MPI_BCAST(tmpz,kmx,MPI_DOUBLE_COMPLEX,master, &
           tube_comm,ierr)
-     call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+     !call MPI_BARRIER(MPI_COMM_WORLD,ierr)
      do k = 0,kmx-1
         k1 = k
         if(k>kmx/2)k1=kmx-k

@@ -19,6 +19,13 @@ module gem_com
      end function en3
   END INTERFACE
 
+  ! number of openmp threads
+  integer :: nthreads
+
+  ! name of our project directory
+  ! we should probably make this configureable at some point
+  character(len=*),parameter :: projdir = '/global/project/projectdirs/mp118/'
+
   integer :: imx,jmx,kmx,mmx,mmxe,nmx,nsmx,nsubd=8,&
        modemx,ntube=4,nxpp,ngdx=5,nb=6, &
        negrd=8,nlgrd=8
@@ -276,13 +283,3 @@ contains
   end subroutine new_gem_com
 
 end module gem_com
-
-
-
-
-
-
-
-
-
-
